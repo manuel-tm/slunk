@@ -9,6 +9,8 @@ Slunk keeps track of a music collection. This document is the starting point for
 
 **Design docs.** Slunk's design lives in `docs/design/`, one numbered document per topic (`N_topic.md`), numbered in the order they're written. This one comes first, and later documents build on it.
 
+Design docs are plans, and after that a history of the project. A design doc is only edited while that design is being developed. After that its text stays as it was: when the code shows something has to change, the change is added as an appendix at the end of the doc. What's actually built is documented in the rest of `docs/` ([docs/README.md](../README.md)), and those docs are kept up to date with the code.
+
 | Document | Covers |
 |---|---|
 | `1_introduction.md` | This document: the foundations listed above |
