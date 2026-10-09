@@ -14,6 +14,8 @@ The frontend is a skeleton for now: a single placeholder page, with no routing o
 | Styling | Tailwind CSS 4 |
 | Icons | lucide-react |
 | Fonts | Nunito Sans (body) and Outfit (headings), self-hosted through Fontsource |
+| Toasts | sonner |
+| Dates | react-day-picker and date-fns, used by `calendar` |
 
 ## Structure
 
@@ -22,12 +24,14 @@ slunk-fe/
   components.json          shadcn configuration
   mise.toml                pinned Node version
   src/
-    main.tsx               entry point: mounts <App /> inside ThemeProvider
+    main.tsx               entry point: mounts <App /> and the <Toaster />
+                           inside ThemeProvider and TooltipProvider
     App.tsx                the app (a placeholder page for now)
     index.css              Tailwind setup, theme tokens (light and dark), fonts
     components/
       theme-provider.tsx   light / dark / system theme
-      ui/                  shadcn components (only button so far)
+      ui/                  shadcn components (see "Installed components" below)
+    hooks/use-mobile.ts    useIsMobile(), used by the sidebar
     lib/utils.ts           cn() helper
 ```
 
@@ -38,6 +42,22 @@ slunk-fe/
 - **Adding shadcn components:** use `npx shadcn@latest add <component>`. They're copied into `src/components/ui/` and become our code, so they get edited there rather than wrapped.
 - **Building screens:** compose those components. Don't hand-build primitives that shadcn provides.
 - **Icons:** they come from `lucide-react`.
+
+**Installed components**, in `src/components/ui/`:
+
+| Purpose | Components |
+|---|---|
+| Layout and navigation | `sidebar`, `breadcrumb`, `separator`, `scroll-area`, `tabs` |
+| Showing data | `table`, `card`, `item`, `badge`, `avatar`, `skeleton`, `empty`, `tooltip` |
+| Forms | `field`, `label`, `input`, `input-group`, `textarea`, `select`, `combobox`, `checkbox`, `switch`, `toggle`, `toggle-group`, `calendar` |
+| Overlays | `dialog`, `alert-dialog`, `sheet`, `popover`, `dropdown-menu` |
+| Feedback | `sonner` (toasts), `alert`, `progress`, `spinner` |
+| Actions | `button` |
+
+**Local changes to shadcn files.** Re-adding a component with `--overwrite` replaces it with the registry version, so reapply these afterwards:
+- `sonner.tsx` reads the theme from our `ThemeProvider` (`@/components/theme-provider`) instead of `next-themes`, which isn't installed.
+- `hooks/use-mobile.ts` subscribes to the media query with `useSyncExternalStore`. The registry version sets state inside an effect, which the react-hooks lint rule rejects.
+- `scroll-area.tsx` has its unused `React` import removed, which `tsc -b` rejects.
 
 ### Styling
 

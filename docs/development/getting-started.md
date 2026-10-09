@@ -25,7 +25,7 @@ Scripts, run inside `slunk-fe/`:
 |---|---|
 | `npm run dev` | Starts the Vite dev server |
 | `npm run build` | Type-checks and builds for production |
-| `npm run typecheck` | Runs TypeScript without emitting |
+| `npm run typecheck` | Type-checks the app and config files (`tsc -b`, following the project references) |
 | `npm run lint` | Runs ESLint |
 | `npm run format` | Formats `.ts`/`.tsx` files with Prettier |
 | `npm run preview` | Serves the production build |
