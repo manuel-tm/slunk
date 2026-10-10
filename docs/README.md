@@ -40,19 +40,19 @@ Work flows from design to code to docs:
 Appendices are lettered in order (A, B, …). For example (this one is made up):
 
 ```markdown
-## Appendix A: Albums store their disc count
+## Appendix A: Releases store their disc count
 
 - **Date:** 2026-11-02
-- **Affects:** §4.3 Albums
+- **Affects:** §4.3 Releases
 - **Was:** the number of discs is computed from the tracks.
-- **Now:** albums store `total_cds`.
+- **Now:** releases store `total_cds`.
 - **Why:** box sets with missing discs showed the wrong count.
 ```
 
 And at the affected section:
 
 ```markdown
-> Changed during implementation, see [Appendix A](#appendix-a-albums-store-their-disc-count).
+> Changed during implementation, see [Appendix A](#appendix-a-releases-store-their-disc-count).
 ```
 
 ### Keeping docs up to date
