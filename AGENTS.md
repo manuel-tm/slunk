@@ -8,13 +8,13 @@ Slunk is a local music library manager. Its SQLite database is the source of tru
 
 ## Where things are
 
-- **[`docs/design/`](docs/design/): design docs.** These are the plans, used for planning and prompting. [`1_introduction.md`](docs/design/1_introduction.md) is the base design. Read its relevant sections before changing the data model, migrations, backend structure, or anything that touches files.
+- **[`docs/design/`](docs/design/): design docs.** These are the plans, used for planning and prompting. [`1_introduction.md`](docs/design/1_introduction.md) is the base design. Read its relevant sections before changing the data model, migrations, backend structure, frontend routes, or anything that touches files.
 - **The rest of [`docs/`](docs/README.md): what's actually built,** kept up to date with the code. Start at `docs/README.md`.
 - **`slunk-fe/`: the frontend skeleton.** How it's built: [`docs/development/frontend.md`](docs/development/frontend.md).
 - **`slunk-be/`: doesn't exist yet.** It's planned in design doc §5–§6. Don't assume any backend code or `db:*` scripts exist until phase 0 creates them.
 - **`temp/`: local assets for prompting, never committed.** See [Never reference files in `temp/`](#never-reference-files-in-temp).
 
-Work happens in phases (design doc §7). Stay within the current phase unless asked otherwise.
+Work happens in phases (design doc §8). Stay within the current phase unless asked otherwise.
 
 ## Workflow: design → code → docs
 

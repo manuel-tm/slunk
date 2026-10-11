@@ -34,4 +34,4 @@ How the frontend is built is described in [frontend.md](frontend.md).
 
 ## Backend
 
-The backend doesn't exist yet. It arrives in phase 0 ([design §7](../design/1_introduction.md#7-phases)), and its setup will be documented here then.
+The backend doesn't exist yet. It arrives in phase 0 ([design §8](../design/1_introduction.md#8-phases)), and its setup will be documented here then.

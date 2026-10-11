@@ -5,6 +5,7 @@ Slunk keeps track of a music collection. This document is the starting point for
 - its data model;
 - how the database evolves through migrations;
 - how the backend is organized;
+- the frontend's routes, and what each one shows;
 - the phases to build it in.
 
 **Design docs.** Slunk's design lives in `docs/design/`, one numbered document per topic (`N_topic.md`), numbered in the order they're written. This one comes first, and later documents build on it.
@@ -30,6 +31,7 @@ Design docs are plans, and after that a history of the project. A design doc is 
   The database itself enforces integrity: `STRICT` tables, foreign keys, CHECKs and triggers.
 - Migrations are timestamped TypeScript files in `slunk-be/priv/repo/migrations/`, applied by a small runner built on Kysely. They come with Ecto-style commands (`db:migrate`, `db:rollback`, `db:gen`, …). All pending migrations apply in one transaction, after a backup.
 - Backend: Node 26 (runs TypeScript natively), Apollo Server 5 on Express 5, Kysely + better-sqlite3, and Phoenix-style contexts.
+- Frontend: every route is listed with what it shows, and loads only that. Release and artist pages follow Discogs, the other entities get plain CRUD pages, and importing a folder is a step-by-step flow with a route per step.
 - Phases: **0** Foundations → **1** Files → **2** Catalog → **3** Tags → **4** Integrity. Exporting to external libraries comes later, designed in its own doc.
 
 ## 2. What Slunk is
@@ -686,9 +688,279 @@ Dependencies point one way:
 - `src/repo/` implements those interfaces for SQLite.
 - Resolvers only call context functions.
 
-## 7. Phases
+## 7. Frontend routes
 
-Each phase is a vertical slice (migration if needed → repository → context → GraphQL → UI) and ends with something usable.
+This section lists every route in `slunk-fe` and what each one shows. A page shows only what's listed for it, so every page asks the backend for little and stays simple to build.
+
+- **Releases and artists** are where the user spends their time, and are presented like Discogs. Everything about selling and the community is left out: no marketplace, statistics, ratings, reviews, lists, videos or versions.
+- **Every other entity** gets plain CRUD pages: a list, a read page and a form.
+- **Importing** a release from a folder is a step-by-step flow, with one route per step.
+
+### 7.1 Layout
+
+```
+┌─────────────────┬──────────────────────────────────────────────────────┐
+│ slunk           │ Artists > Drake (19284)                 Edit  Delete │
+│ [ + Import ]    ├──────────────────────────────────────────────────────┤
+│                 │                                                      │
+│ Dashboard       │                                                      │
+│ Artists         │                                                      │
+│ Releases        │                                                      │
+│ Tracks          │                                                      │
+│ Labels          │                         page                         │
+│ Files           │                                                      │
+│                 │                                                      │
+│ Lists           │                                                      │
+│ Tags            │                                                      │
+│ Release formats │                                                      │
+│ Release media   │                                                      │
+│ Credit roles    │                                                      │
+└─────────────────┴──────────────────────────────────────────────────────┘
+```
+
+- **Sidebar** (shadcn `sidebar`): the app name, an Import button that opens `/import`, then a link per section. The lists the user manages sit in their own group. A section appears once its phase is built (§7.4).
+- **Header:** a breadcrumb title on the left, and the page's buttons and tabs on the right.
+  - On a list, the title is the section's name (`Artists`).
+  - On an entity's page, it's the section, then the entity's name and id: `Artists > Drake (19284)`. Each crumb links to its page.
+  - A form adds a last crumb: `Artists > Drake (19284) > Update`, or `Artists > New`.
+
+### 7.2 Conventions
+
+**URLs.**
+- Each entity has the same four routes, called "CRUD" below: `/x` (list), `/x/create`, `/x/:id` (read) and `/x/:id/update`. `:id` is the row's id. Ids are never reused (§4.2), so an old link can't point at a different row.
+- Delete has no route. It's a button on the read page that opens a confirmation (`alert-dialog`). The delete rules of §4.2 decide what can be deleted. When one blocks the delete, the dialog says what still uses the row. After a delete, the app goes to the list.
+- A list keeps its state in the query string (`?page=2&sort=title&q=saints`), so it survives a refresh, the back button and a shared link.
+- An unknown id shows a "not found" page (`empty`).
+
+**Lists.**
+- A `table` with 50 rows per page, a "1–50 of 172" count, and previous and next buttons. The header's New button opens `/x/create`.
+- Rows are sorted by id, newest first. Each entity below lists its other sortable columns, all backed by an index. `?sort=title` sorts ascending, `?sort=-title` descending.
+- A search box (`?q=`) matches part of the name, title or path, ignoring case.
+- Denormalized cells, like a track's release or a release's artists, show names that link to the entity's read page.
+- `inserted_at` and `updated_at` are shown as Added and Updated.
+
+**Display.**
+- A date shows only its known parts: `2006`, `Jan 2006` or `Jan 10, 2006` (§4.3 Dates). Durations show as `m:ss` (or `h:mm:ss`), sizes in KB, MB or GB.
+- Ordered names (release artists, labels, credits) are shown in `position` order.
+
+**Forms.**
+- One form per entity, built from shadcn `field`s, serves both create and update.
+- Artists, labels, credit roles, formats, media and files are chosen with `combobox` pickers that search the backend as the user types. Except for files, a picker can also create a new row from what was typed ("Create artist 'Robbie Nevil'"), so the user never leaves a form to add something that's missing.
+- Ordered lists can be reordered, which sets `position`.
+- Saving goes to the read page. If a save fails, the form stays, with the database's reason (e.g. a single-value tag that's already set).
+
+### 7.3 Loading data
+
+Pages are designed to load little:
+- **One query per route.** Each route sends one GraphQL query, asking only for the fields it shows. Anything not on screen is either its own route (each tab is a route) or loads when it's opened (a picker's options).
+- **Lists load a page.** 50 rows, plus a count.
+- **Related names are batched, not joined.** A list first loads its page of rows. Each denormalized column is then one query over the page's ids, done by a DataLoader in the resolvers. A join would instead repeat each release once for every artist, label, format and medium it has. Each denormalized cell only needs an id and a name.
+- **Indexes.** Lists, sorts and the filters that links lead to (artist, label, format, medium, release, tag) all use indexes from §4.4. Search (`?q=`), the file filters and the dashboard totals scan their table, which is fast enough at the size of a personal library.
+- **Pickers** return the first 20 matches. They never load a whole table.
+- **Images** are the original files, from `GET /files/:id`, and lists load them lazily (`loading="lazy"`). Slunk keeps no thumbnails, because it only writes next to its database (§4.1). If lists with covers get slow, `GET /files/:id` can resize images in memory.
+
+### 7.4 Route map
+
+| Route | Page | Phase |
+|---|---|---|
+| `/` | Dashboard (§7.5) | 0 |
+| `/releases` | Release list | 2 |
+| `/releases/create` | New release, details only | 2 |
+| `/releases/:id` | Release page | 2 |
+| `/releases/:id/files` | The release's cover and linked files | 2 |
+| `/releases/:id/update` | Edit release: details | 2 |
+| `/releases/:id/update/tracks` | Edit release: tracks | 2 |
+| `/releases/:id/update/files` | Edit release: cover and file links | 2 |
+| `/releases/:id/update/credits` | Edit release: credits | 2 |
+| `/releases/:id/update/tags` | Edit release: tags | 3 |
+| `/artists`, `/artists/create`, `/artists/:id/update` | Artist list and form | 2 |
+| `/artists/:id` | Artist page: releases | 2 |
+| `/artists/:id/appearances` | Artist page: appearances | 2 |
+| `/artists/:id/credits` | Artist page: credits | 2 |
+| `/artists/:id/files` | Artist page: picture and linked files | 2 |
+| `/tracks` + CRUD | Tracks (§7.8) | 2 |
+| `/labels` + CRUD | Labels | 2 |
+| `/files` + CRUD | Files | 1 |
+| `/tags`, `/tags/create`, `/tags/:type/:id`, `/tags/:type/:id/update` | Tag definitions | 3 |
+| `/release-formats` + CRUD | Release formats | 2 |
+| `/release-media` + CRUD | Release media | 2 |
+| `/credit-roles` + CRUD | Credit roles | 2 |
+| `/import`, `/import/…` | Import (§7.9) | 2 |
+| `/library-check` | The library check's results, grouped by kind of problem (phase 4 in §8), each linking to what needs fixing | 4 |
+
+Tag routes include the type (`text`, `number` or `date`): each type has its own tables, so the same id exists once per type.
+
+### 7.5 Dashboard
+
+`/` shows a few numbers that are cheap to compute, and the latest additions. Each part appears once its phase is built.
+- **Status:** the backend's `health` answer (phase 0).
+- **Totals:** releases, artists, tracks, labels and files, plus the total playing time. Each total links to its list.
+- **Newest releases:** the 12 most recently added (highest ids), as cover cards with title and artists.
+- **Unused files:** how many registered files nothing uses yet, linking to `/files?unused=1`.
+
+### 7.6 Releases
+
+**List, `/releases`.**
+- Columns: id, cover, title, artists, released, formats, media, labels, catalog number, various artists, added, updated.
+- Filters (ids, each chosen with a picker): `?format=`, `?medium=` and `?label=`. They combine, so "EPs on vinyl" is `?format=3&medium=4`. There's also `?q=` on the title. Phase 3 adds tag filters as more parameters.
+- Sorts: title, released.
+- The label and artist pages show this same table, with one filter fixed and fewer columns.
+
+**Release page, `/releases/:id`.** Laid out like a Discogs release page:
+
+```
+Releases > High School Musical (Soundtrack) (837)           Edit  Delete
+─────────────────────────────────────────────────────────────────────────
+┌─────────┐  The High School Musical Cast – High School Musical (Soundtrack)
+│  cover  │  Label:     Walt Disney Records – 365 4622
+│         │  Format:    Album, Soundtrack
+└─────────┘  Media:     CD
+ Files (3)   Released:  Jan 10, 2006
+             Genre:     Pop, Rock                        ← a tag (phase 3)
+
+Tracklist                                                    Hide credits
+ 1  Zac Efron / Vanessa Anne Hudgens – Start of Something New    3:17  ▶
+      Producer – Mathew Gerrard
+      Writer – Mathew Gerrard, Robbie Nevil
+ …
+ 5  The High School Musical Cast – Stick to the Status Quo       4:28  ▶
+ …
+                                                          Total  …
+
+Credits
+ …
+```
+
+- **Heading:** the cover, then the release's artists (each a link), a dash and the title.
+- **Facts,** one row each. A row with nothing in it is hidden.
+  - Label: the labels, each linking to its page, then the catalog number: `October's Very Own, Young Money, Cash Money, Republic Records – B0019141-02`.
+  - Format and Media: each value links to the release list filtered by it (`/releases?format=…`).
+  - Released: the date, with only its known parts.
+  - Tags (phase 3): a row per tag, like Discogs' Genre and Style: "Genre: Pop, Rock". Each value links to the release list filtered by it.
+- **Files (n)**, under the cover, links to `/releases/:id/files`. This page only loads the count.
+- **Tracklist:**
+  - Grouped by disc, with a "CD 1", "CD 2" heading when there's more than one.
+  - Each row has the track number, the title (a link to the track) with its "(feat. …)", the duration, and a play button that plays the track's file in the page.
+  - On a various-artists release, each row starts with the track's artists, as §4.3 describes. A regular release shows only the features.
+  - Each track's credits are listed under it, a line per role: "Writer – Mathew Gerrard, Robbie Nevil". "Hide credits" hides them, and the browser remembers the choice.
+  - The total duration goes at the end.
+- **Credits:** the release's own credits, a line per role.
+- **Not shown:** things Slunk doesn't store (country, notes, identifiers), and Discogs' marketplace, statistics, ratings, reviews, videos and versions. A barcode is a tag, so it shows with the tags.
+
+**Release files, `/releases/:id/files`.** The cover, then the linked files: images in a grid, other files (a booklet, a rip log) in a list, each with its note. Each one opens the file.
+
+**New release, `/releases/create`.** Only the details form (below). Saving goes to the release page, and the update tabs add the rest. The import (§7.9) is the guided way to do it all.
+
+**Edit, `/releases/:id/update/…`.** Editing is split into tabs in the header. Each tab is a route and saves on its own:
+- **Details** (`/update`): title; artists; various artists; release date; formats; media; labels; catalog number. The date is one field, typed as `2006`, `2006-01` or `2006-01-10`, which also sets its precision.
+- **Tracks** (`/update/tracks`): a row per track, in order: disc, number, title, artists, features, duration (read-only, from the file) and audio file. On a regular release, artists are usually left empty, so the release's artists perform. "Add track" picks a registered audio file that isn't a track yet. Removing a row deletes the track, not the file.
+- **Files** (`/update/files`): the cover, chosen from the release's linked images or from any registered image, and the file links, each with a note.
+- **Credits** (`/update/credits`): the release's credits, then each track's credits, as rows of role and artist.
+- **Tags** (`/update/tags`, phase 3): the tags set on the release, and a picker to add one. A single-value tag is one input, and a multi-value tag is a list (§4.3).
+
+The import's steps use the same forms.
+
+### 7.7 Artists
+
+**List, `/artists`.** Columns: id, name, added, updated. Sort: name.
+
+**Artist page.** Laid out like a Discogs artist page. The header holds four tabs, each a route showing its count: Releases, Appearances, Credits and Files. Every tab starts with the artist's picture and name.
+
+```
+Artists > Drake (19284)                                     Edit  Delete
+Releases 4 · Appearances 2 · Credits 1 · Files 1
+─────────────────────────────────────────────────────────────────────────
+┌─────────┐  Drake
+│ picture │
+└─────────┘
+
+All 4 · Album 2 · Mixtape 1 · Single 1                [ Search releases ]
+       Title                  Format  Media  Label                Released
+ [▣]   Nothing Was the Same   Album   CD     October's Very Own…  2013
+ …
+```
+
+- **Releases** (`/artists/:id`): the releases the artist is a release artist on, in the release table, oldest first, with undated releases last.
+  - Columns: cover, title, formats, media, labels, catalog number, released.
+  - When a release has other artists too, the title names them all: "U2 & Green Day – The Saints Are Coming".
+  - Above the table: a chip per format with its count, which filters the table (`?format=`), and a search box.
+- **Appearances** (`/artists/:id/appearances`): releases where the artist performs or is featured on a track, but isn't a release artist. For example, Majid Jordan on "Nothing Was the Same". A row per release: cover, artists and title, the artist's tracks on it ("Hold On, We're Going Home (feat.)"), released.
+- **Credits** (`/artists/:id/credits`): the artist's credits on releases and tracks, grouped by role. Columns: role, release, track (empty for a release credit), released.
+- **Files** (`/artists/:id/files`): the picture, then the linked files, laid out as on a release.
+- **Not shown:** a profile, real name, aliases and websites. Slunk doesn't store them.
+
+**Form** (`/artists/create`, `/artists/:id/update`): name, picture (an image picker), and the file links, each with a note.
+
+### 7.8 Other entities
+
+Plain CRUD pages, following §7.2.
+
+**Tracks.**
+- List: id, title, duration, disc, number, release, artists, file (its path), added, updated. The artists column shows who performs the track, worked out as in §4.3, so a track on a regular release shows the release's artists. Filters: `?release=`, `?q=`.
+- Read: title, artists and features, the release and the track's place on it ("disc 1, track 12"), duration, credits by role, the audio file with a player, and the linked files with their notes.
+- Form: release, audio file (any registered audio file that isn't a track yet), disc, number, title, artists, features, credits and file links. `?release=` and `?file=` prefill it.
+
+**Labels.**
+- List: id, name, added, updated. Sort: name.
+- Read: logo and name, then the release table filtered to the label, with the catalog numbers.
+- Form: name, logo (an image picker).
+
+**Files** (phase 1).
+- List: id, path, type, size, modified (`mtime`), sha256 (shortened), track (when the file is a track's audio), added, updated. Filters: `?type=`, `?unused=1` (files nothing uses yet), `?q=` on the path. Sort: path. The New button reads "Register".
+- Create (`/files/create`) registers files. A folder browser (the same as step 1 of §7.9) picks a folder. Its files are listed, including subfolders, with their type (from the extension), size, and whether they're registered. The checked files are registered, with a progress bar while they're hashed.
+- Read: a preview (the image, an audio player, or a link that opens the file), every column, and everything that uses the file: the track it's the audio of, the releases it's the cover of, the artists and labels it's the picture of, and its file links with their notes. Those uses are what block a delete (§4.3 Files). An unused audio file offers "Create track", which opens `/tracks/create?file=:id`.
+- Form, for update only: `path`, to relink a file that moved (Slunk reads its size, mtime and hash again), and `type`. A track's audio file has to stay `music`.
+- Delete removes only the record, and the dialog says so: the file on disk isn't touched.
+
+**Tags** (phase 3).
+- List: a table per type (text, real number, date), with id, name, and single or multiple.
+- Read (`/tags/:type/:id`): name, type, single or multiple, and how many releases have the tag. A text tag also lists its values with how many releases have each ("Rock: 120"). Each value links to the release list filtered by it.
+- Form: type (only when creating), name, and single or multiple. Switching to single fails while some release has several values (§4.4), and the form shows which releases.
+
+**Release formats, release media and credit roles.**
+- List: id, name. Sort: name.
+- Read: the name, and how many releases use it (how many credits, for a role). A format or medium links to the release list filtered by it.
+- Form: name.
+
+### 7.9 Import
+
+Import turns a folder of files into a complete release. Each step is a route, and each step saves to the database before going on. The browser keeps nothing between steps, so a refresh, the back button or coming back later loses nothing.
+
+| Step | Route | What it does |
+|---|---|---|
+| 1. Folder | `/import?path=…` | Browse the library's folders and pick one |
+| 2. Release | `/import/release?folder=…` | Create the release |
+| 3. Tracks | `/import/:id/tracks?folder=…` | Create tracks from the folder's audio files |
+| 4. Cover & files | `/import/:id/files?folder=…` | Choose the cover, link the other files |
+| 5. Credits | `/import/:id/credits?folder=…` | Add credits |
+| 6. Tags | `/import/:id/tags?folder=…` | Set tags (phase 3) |
+
+- `folder` is the chosen folder, relative to the folder holding `slunk.db`, like `files.path` (§4.1). Every step keeps it in the URL.
+- `:id` is the new release's id.
+- A stepper at the top shows the steps. Once the release exists, each step is a link.
+
+The steps:
+1. **Folder.** A folder browser, starting in the folder that holds `slunk.db`. It shows the subfolders, `..` to go up (paths may start with `../`, §4.1), and the files directly inside. `?path=` is the folder being browsed. Subfolders that already hold registered files are marked, so folders that were already imported stand out. "Import this folder" opens step 2. The backend lists folders without writing anything.
+2. **Release.** The details form of §7.6, under a summary of the folder ("13 audio files, 1 image, 1 other").
+   - If phase 2's optional prefill is built, fields are prefilled from the audio files' embedded tags, as suggestions. Otherwise the title comes from the folder's name.
+   - If Slunk already has a release with the same title, the step says so, so it isn't imported twice.
+   - Saving creates the release and replaces the browser's history entry with `/import/:id/release?folder=…`. Going back to this step then edits the release instead of creating another one.
+3. **Tracks.** The tracks form of §7.6, plus a row for every audio file in the folder (including subfolders) that isn't a track yet, in path order.
+   - Rows are prefilled from embedded tags, or else from the file name and subfolder: `CD2/03 Title.flac` becomes disc 2, track 3, "Title".
+   - Unchecked rows are skipped. Files that are already another release's track are shown but disabled, with the name of that release.
+   - Next registers the checked files that aren't registered yet and creates their tracks, in one mutation.
+4. **Cover & files.** The folder's images and other files: the cover is chosen from the images, and each file to link gets a checkbox and a note. Next registers and links them.
+5. **Credits.** The credits form of §7.6.
+6. **Tags** (phase 3). The tags form of §7.6. Finish opens the release page.
+
+What this means for the user:
+- Steps 3 to 6 can be skipped. Without `folder`, a step is just its plain form.
+- Files are only registered when a step uses them, so an import never leaves unused file records behind.
+- The release exists from step 2 on. An import left halfway is an ordinary, incomplete release, which can be finished from its edit tabs or deleted.
+
+## 8. Phases
+
+Each phase is a vertical slice (migration if needed → repository → context → GraphQL → UI) and ends with something usable. A phase's UI is the routes marked with it in the route map (§7.4).
 
 The baseline migration creates the whole §4.4 schema in phase 0, because the catalog tables already reference `files`. Later phases only add migrations for new things.
 
@@ -718,6 +990,7 @@ The baseline migration creates the whole §4.4 schema in phase 0, because the ca
   - each track's artists on a various-artists release, and only the features on a regular one;
   - credits under each track.
 - Optional: prefill new releases and tracks from the file's embedded tags, as suggestions only. Slunk stays the source of truth.
+- The import (§7.9): a release built from a folder, step by step.
 - *Exit:* a user builds a complete release from registered files: formats, media, labels and catalog number, tracks, artists, credits and cover.
 
 **Phase 3 — Tags**
