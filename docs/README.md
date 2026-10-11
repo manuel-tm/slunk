@@ -21,10 +21,13 @@ docs/            documentation (this folder)
   design/        design docs (plans)
   development/   setup and conventions for the code
 slunk-fe/        frontend
+temp/            local assets for prompting, never committed
 AGENTS.md        instructions for AI coding agents (CLAUDE.md points to it)
 ```
 
 The backend, `slunk-be/`, doesn't exist yet. It's planned in [design §6](design/1_introduction.md#6-backend-shape).
+
+`temp/` holds files you share with an agent while prompting (screenshots, notes, sample data). Only its placeholder, `temp/.gitkeep`, is committed; the root `.gitignore` ignores everything else. Because those files exist only on your machine, nothing that gets committed (docs, design docs, code, commit messages) may reference them. If something in one of them belongs in the docs, write it into the doc itself.
 
 ## How we work
 

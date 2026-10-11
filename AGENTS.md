@@ -12,6 +12,7 @@ Slunk is a local music library manager. Its SQLite database is the source of tru
 - **The rest of [`docs/`](docs/README.md): what's actually built,** kept up to date with the code. Start at `docs/README.md`.
 - **`slunk-fe/`: the frontend skeleton.** How it's built: [`docs/development/frontend.md`](docs/development/frontend.md).
 - **`slunk-be/`: doesn't exist yet.** It's planned in design doc §5–§6. Don't assume any backend code or `db:*` scripts exist until phase 0 creates them.
+- **`temp/`: local assets for prompting, never committed.** See [Never reference files in `temp/`](#never-reference-files-in-temp).
 
 Work happens in phases (design doc §7). Stay within the current phase unless asked otherwise.
 
@@ -37,6 +38,12 @@ The full process is in [docs/README.md](docs/README.md#how-we-work).
 - Slunk never moves, copies, renames, deletes or retags a user's file. Code that touches the user's files may only read them.
 - The only things Slunk writes are next to its database: `slunk.db`, SQLite's `-wal`/`-shm` files, and `slunk-backups/`.
 - For development and tests, point `SLUNK_DB` at a scratch folder with sample files. Never point it at a real music library.
+
+### Never reference files in `temp/`
+
+- `temp/` holds assets the user shares while prompting. Only its placeholder, `temp/.gitkeep`, is committed; the root `.gitignore` ignores everything else, so those files exist only on the user's machine.
+- Never reference a file in `temp/` in anything that gets committed or published: docs, design docs, code, comments, commit messages or PR descriptions. For anyone else, the reference would point to nothing.
+- If something from a `temp/` file belongs in the docs, write that content into the doc itself.
 
 ### The database is the part built to last
 
