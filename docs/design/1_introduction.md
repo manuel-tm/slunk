@@ -20,8 +20,9 @@ Design docs are plans, and after that a history of the project. A design doc is 
 
 - Slunk owns a database that is the source of truth for all music metadata. It's a record keeper: it never writes to the user's files, and only records where they are.
 - The data model covers:
-  - files, artists, releases and tracks;
+  - files, artists, labels, releases and tracks;
   - release formats (Album, EP, Single, …) and media (CD, Vinyl, …), several of each per release;
+  - the labels each release came out on, and its catalog number;
   - who performs each release and track, credits with user-defined roles, and various-artists releases;
   - file links;
   - typed tags, each single- or multi-value.
@@ -63,9 +64,10 @@ Music libraries usually treat the tags embedded in each file as the source of tr
 
 - **Artists:** any person or group making music, or related to making it. For example U2, Billie Joe Armstrong, Mozart, the Vienna Symphony Orchestra, or "Various Artists".
 - **Releases:** a set of tracks published together, such as an album, an EP or a single. Each release has formats from a list the user manages, and can have several: U2 & Green Day's "The Saints Are Coming" is a Single, and a vinyl album can be both an LP and an Album. Releases also have media, from a second list: what they're on, such as CD or Vinyl. A release can have many artists. On some releases each track names its own performers, for example a compilation by "Various Artists", or a soundtrack by "The High School Musical Cast" where each song names its singers.
+- **Labels:** the record labels a release came out on, such as Interscope, XL Recordings or Rough Trade. A release can have several: Drake's "Nothing Was the Same" carries Cash Money Records, Republic Records, Young Money Entertainment and October's Very Own. A release also has a catalog number, the label's identifier for it, printed on the spine or back cover (`B0019141-02` on the US CD).
 - **Tracks:** one unit of music. Every track belongs to one release and is created from one registered audio file. A track names who performs it, which can differ from the release's artists. It can also have guests (features): "Hold On, We're Going Home" by Drake features Majid Jordan.
 - **Credits:** everyone else who worked on a release or track, each with a role: producer, writer, conductor, an instrument such as saxophone. The user manages the list of roles.
-- **Tags:** arbitrary metadata on releases, such as Genre, Label, Date purchased, Score or Price (USD).
+- **Tags:** arbitrary metadata on releases, such as Genre, Barcode, Date purchased, Score or Price (USD).
   - Each data type (text, real number, date) has its own tables, so each type is queried with its own operators: text matching, numeric ranges, date ranges.
   - The same design extends later to tags on tracks.
 
@@ -94,18 +96,19 @@ The app's connection sets `foreign_keys = ON`, `journal_mode = WAL` and `busy_ti
 ### 4.2 Conventions
 
 - **Strict typing:** every table is `STRICT`, so SQLite rejects, say, text in an integer column.
-- **Ids:** `files`, `artists`, `releases` and `tracks` use `INTEGER PRIMARY KEY AUTOINCREMENT`, so a deleted id is never reused. Anything that remembers an id outside the database can't end up pointing at a different row. Other tables use `INTEGER PRIMARY KEY`.
+- **Ids:** `files`, `artists`, `labels`, `releases` and `tracks` use `INTEGER PRIMARY KEY AUTOINCREMENT`, so a deleted id is never reused. Anything that remembers an id outside the database can't end up pointing at a different row. Other tables use `INTEGER PRIMARY KEY`.
 - **Time:** instants (dates, timestamps) are Unix epoch seconds, UTC. Durations are milliseconds.
-- **Timestamps:** `inserted_at` / `updated_at` exist on files, artists, releases and tracks. Both default to `unixepoch()`, and the repositories set `updated_at`.
+- **Timestamps:** `inserted_at` / `updated_at` exist on files, artists, labels, releases and tracks. Both default to `unixepoch()`, and the repositories set `updated_at`.
 - **Foreign keys:** SQLite ignores foreign keys unless `PRAGMA foreign_keys = ON` is set on the connection, so every connection sets it. SQLite also doesn't index foreign key columns, so every FK column leads some index. Without that index, a delete scans the child table.
 - **Delete rules:**
   - CASCADE for pure link rows, when the release, artist or track they describe is deleted.
   - RESTRICT for anything still in use:
     - a release with tracks;
     - a linked or credited artist;
+    - a label on a release;
     - a tag definition, credit role, release format or medium in use;
     - a file used anywhere: a track's audio, a cover, a picture or a file link.
-- **Naming:** join tables name both sides in alphabetical order: `artists_releases`, `artists_tracks`, `files_tracks`, `release_formats_releases`, `release_media_releases`. Credit and tag value tables hold more than a link (a role, a value), so they're named after their owner instead: `release_credits`, `track_credits`, `release_text_tags`. That also keeps the three tag value tables alike, where alphabetical order would give `date_tags_releases` but `releases_text_tags`.
+- **Naming:** join tables name both sides in alphabetical order: `artists_releases`, `artists_tracks`, `files_tracks`, `labels_releases`, `release_formats_releases`, `release_media_releases`. Credit and tag value tables hold more than a link (a role, a value), so they're named after their owner instead: `release_credits`, `track_credits`, `release_text_tags`. That also keeps the three tag value tables alike, where alphabetical order would give `date_tags_releases` but `releases_text_tags`.
 
 ### 4.3 Design decisions
 
@@ -147,6 +150,25 @@ The app's connection sets `foreign_keys = ON`, `journal_mode = WAL` and `busy_ti
 - Media work like formats: the user manages the list, names are stored as they're displayed and unique ignoring case, and a medium still in use can't be deleted.
 - The baseline migration adds starter media: `Cassette`, `CD`, `Digital`, `Vinyl`. Nothing depends on them.
 - The trade-off: media belong to the release, not to each disc. That box set records `CD` and `DVD`, but not which disc is which. A later migration can add per-disc media if it's ever needed.
+
+**Labels.**
+- A label is the brand a release came out on, named as it's printed on the sleeve: Interscope, XL Recordings, Rough Trade. It's usually an imprint, not the company that owns it.
+- A release can have several labels, because deals are layered and every label involved gets its logo on the record. "Nothing Was the Same" is on October's Very Own (Drake's own label), Young Money (the label that signed him), Cash Money (Young Money's parent) and Republic Records (the Universal label they release through). `labels_releases` links them, and `position` is the display order. A label appears at most once per release, and a release can have none yet.
+- Labels are entities with their own page, like artists:
+  - Names aren't unique, because two labels can share a name.
+  - `picture` points to the label's logo, the same way `artists.picture` points to the artist's primary image.
+  - A label still on a release can't be deleted.
+- A self-released record links to an ordinary "Not On Label" label that the user creates, the same way a compilation uses a "Various Artists" artist. A release with no labels just hasn't had them entered yet.
+- Only labels are recorded. Other companies printed on a release aren't: ℗ and © holders, distributors, pressing plants, studios. If they're ever needed, a later migration can add them as roles and credits, like `credit_roles` and `release_credits`.
+- The trade-off: labels have no hierarchy. Parent labels and imprints aren't recorded, so "everything on a Universal label" isn't a query. Ownership also changes over time. A later migration can add `labels.parent_id` if it's ever needed. Labels also have no file links yet, only the logo.
+
+**Catalog numbers.**
+- `releases.catalog_number` is the identifier a label gives a release, printed on the spine, back cover or disc (`B0019141-02`). Each edition of a record has its own number, which is why it's on the release.
+- A release has one catalog number, even when several labels are printed: all four labels on the US CD of "Nothing Was the Same" share `B0019141-02`. A set numbered as a range is written as printed (`ECM 1064/65`).
+- Numbers are stored as printed and never normalized, so `B0019141-02` and `B001914102` stay as entered. A CHECK rejects empty strings and leading or trailing spaces. Numbers compare ignoring case.
+- Numbers aren't unique: two editions can share one, and the user may own two copies of a release.
+- The barcode, printed next to the catalog number, isn't a column. It's a text tag.
+- The trade-off: Slunk doesn't record which label gave the number, or two separate numbers on one release (an indie co-release where each label numbers it). A later migration can move the number onto `labels_releases` if it's ever needed.
 
 **Dates.**
 - Dates are Unix epoch seconds, UTC. An unknown month or day becomes the first one (`1987` → `1987-01-01T00:00:00Z`). Pre-1970 dates are negative numbers, which works.
@@ -229,11 +251,19 @@ erDiagram
         int inserted_at
         int updated_at
     }
+    labels {
+        int id PK
+        text name
+        int picture FK "nullable"
+        int inserted_at
+        int updated_at
+    }
     releases {
         int id PK
         text title
         int release_date "nullable, epoch s"
         text release_date_precision "nullable; year, month or day"
+        text catalog_number "nullable, as printed"
         int cover_picture FK "nullable"
         int various_artists "0 or 1, default 0"
         int inserted_at
@@ -261,6 +291,12 @@ erDiagram
         int artist_id FK
         int track_id FK
         int featured "0 or 1, default 0"
+        int position "display order"
+    }
+    labels_releases {
+        int id PK
+        int label_id FK
+        int release_id FK
         int position "display order"
     }
     credit_roles {
@@ -355,11 +391,15 @@ erDiagram
     files ||--o| tracks : "audio of"
     files |o--o{ releases : "cover of"
     files |o--o{ artists : "picture of"
+    files |o--o{ labels : "picture of"
 
     releases ||--o{ artists_releases : "is by"
     artists ||--o{ artists_releases : "artist of"
     tracks ||--o{ artists_tracks : "performed by"
     artists ||--o{ artists_tracks : performs
+
+    releases ||--o{ labels_releases : "released on"
+    labels ||--o{ labels_releases : "label of"
 
     releases ||--o{ release_credits : credits
     tracks ||--o{ track_credits : credits
@@ -400,9 +440,14 @@ Every table is `STRICT`.
 - index `name COLLATE NOCASE` · index `picture`
 - `picture` → files, ON DELETE RESTRICT
 
+**labels**
+- index `name COLLATE NOCASE` · index `picture`
+- `picture` → files, ON DELETE RESTRICT
+
 **releases**
-- index `title COLLATE NOCASE` · index `release_date` · index `cover_picture`
+- index `title COLLATE NOCASE` · index `release_date` · index `catalog_number` (not unique) · index `cover_picture`
 - `cover_picture` → files, ON DELETE RESTRICT
+- `catalog_number` is `COLLATE NOCASE`. It is NULL or non-empty with no leading or trailing spaces: `catalog_number <> '' AND catalog_number = trim(catalog_number)`.
 - `various_artists` in (0, 1)
 - `release_date_precision` in (`year`, `month`, `day`). It is NULL exactly when `release_date` is NULL.
 - `release_date` matches its precision:
@@ -421,6 +466,11 @@ Every table is `STRICT`.
 - `(release_id, artist_id)` / `(track_id, artist_id)` unique · index `artist_id`
 - release/track side ON DELETE CASCADE · `artist_id` ON DELETE RESTRICT
 - `position >= 0` · `artists_tracks.featured` in (0, 1), default 0
+
+**labels_releases**
+- `(release_id, label_id)` unique · index `label_id`
+- `release_id` ON DELETE CASCADE · `label_id` ON DELETE RESTRICT
+- `position >= 0`
 
 **credit_roles**
 - `name` unique, `COLLATE NOCASE`
@@ -621,7 +671,7 @@ slunk-be/
     seeds.ts
   src/
     slunk/                 ← domain contexts (Phoenix: lib/slunk)
-      catalog/             ← artists, releases, release formats and media, tracks, credits
+      catalog/             ← artists, labels, releases, release formats and media, tracks, credits
       media/               ← files, registration, file links
       tagging/             ← tag definitions and values
     slunk_web/             ← (Phoenix: lib/slunk_web)
@@ -658,15 +708,17 @@ The baseline migration creates the whole §4.4 schema in phase 0, because the ca
 **Phase 2 — Catalog**
 - Artists, releases, tracks: list, create, edit, delete. A track is created from a registered audio file, and its duration is read from that file.
 - Release formats and media (list, add, rename, delete), and the formats and media of each release.
+- Labels (list, create, edit, delete), and the labels and catalog number of each release.
 - Release and track artists (with features), and the various-artists flag on releases.
 - Credit roles (list, add, rename, delete), and credits on releases and tracks.
-- Link images and other files to releases, artists and tracks. Set the cover and picture.
+- Link images and other files to releases, artists and tracks. Set the release cover, and the artist and label pictures.
 - Release page:
+  - its labels and catalog number;
   - the track list, grouped by disc;
   - each track's artists on a various-artists release, and only the features on a regular one;
   - credits under each track.
 - Optional: prefill new releases and tracks from the file's embedded tags, as suggestions only. Slunk stays the source of truth.
-- *Exit:* a user builds a complete release from registered files: formats, media, tracks, artists, credits and cover.
+- *Exit:* a user builds a complete release from registered files: formats, media, labels and catalog number, tracks, artists, credits and cover.
 
 **Phase 3 — Tags**
 - Tag definitions per type (text, real number, date), each single- or multi-value.
