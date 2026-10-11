@@ -2,7 +2,7 @@
 
 A local music library manager. Slunk keeps its own database as the source of truth for your music's metadata, and only reads your music files.
 
-> **Status:** early. The design is written and the frontend is a skeleton. The backend hasn't been started yet.
+> **Status:** early. Phase 0 (foundations) is built: the database with its full schema and migrations, a backend that serves a GraphQL API over it, and a frontend with its app shell and a dashboard.
 
 ## Documentation
 

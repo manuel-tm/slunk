@@ -114,6 +114,8 @@ The app's connection sets `foreign_keys = ON`, `journal_mode = WAL` and `busy_ti
 
 ### 4.3 Design decisions
 
+> Changed during implementation, see [Appendix A](#appendix-a-more-integrity-rules-in-the-database).
+
 **Files.**
 - `path` is relative, as described in §4.1.
 - `size_bytes`, `mtime` and `sha256` let a library check notice changes made outside Slunk:
@@ -432,6 +434,8 @@ erDiagram
 
 #### Constraints & indexes
 
+> Changed during implementation, see [Appendix A](#appendix-a-more-integrity-rules-in-the-database).
+
 Every table is `STRICT`.
 
 **files**
@@ -616,6 +620,8 @@ The runner is `slunk-be/src/repo/migrator.ts`, about 100 lines, run directly by 
 **`rollback [n]`** uses the same envelope. It runs `down` for the last *n* migrations in reverse order and deletes their rows.
 
 ### 5.3 Changing an existing table
+
+> Changed during implementation, see [Appendix B](#appendix-b-the-table-rebuild-needs-two-more-steps).
 
 SQLite's `ALTER TABLE` only adds, renames and drops columns. Changing a type, CHECK, default or FK means rebuilding the table.
 
@@ -1013,3 +1019,37 @@ The baseline migration creates the whole §4.4 schema in phase 0, because the ca
 Files come before Catalog because every track is created from a registered audio file. Tags need releases, so they come after Catalog.
 
 **Later — External libraries (needs planning).** Exporting music to other libraries is Slunk's next goal after these phases. It hasn't been designed yet. Its planning (data model, export and sync) goes in `docs/design/2_external_libraries.md` before any work starts. Nothing in this document depends on it, and its tables will come in as new migrations.
+
+## Appendix A: More integrity rules in the database
+
+- **Date:** 2026-10-11
+- **Affects:** §4.3 Files, Tracks and Releases; §4.4 Constraints & indexes
+- **Was:** the database enforced the rules listed in §4.4. The app checked that a track's file is `music`. Names, titles and text values had no CHECK, and nothing said which files a cover or picture could point to.
+- **Now:** the baseline migration also enforces:
+  - **Trimmed text.** These must be non-empty, with no leading or trailing spaces. It's the same CHECK as `catalog_number` (`x <> '' AND x = trim(x)`), and NULL still passes where the column allows it.
+    - names: `artists`, `labels`, `credit_roles`, `release_formats`, `release_media`, and the three tag definition tables;
+    - titles: `releases`, `tracks`;
+    - `release_text_tags.value`, and `note` on the three file link tables.
+  - **Files.**
+    - `sha256` is 64 lowercase hex characters (`length(sha256) = 64 AND sha256 NOT GLOB '*[^0-9a-f]*'`).
+    - `path` is non-empty and doesn't start with `/`.
+  - **A track's file is `music`.** Triggers reject a track whose `file_id` points to a file of another type, on insert and on update of `file_id`. They also reject changing the `type` of a file that is a track's audio. The app no longer has to check it.
+  - **Covers and pictures are images.** Triggers make `releases.cover_picture`, `artists.picture` and `labels.picture` point to `image` files, on insert and on update of the column. They also reject changing the `type` of a file used as one.
+  - **Ids are `NOT NULL`.** Every `id` column is declared `NOT NULL` as well. That changes nothing in SQLite, where an `INTEGER PRIMARY KEY` is never NULL, but kysely-codegen needs it to type ids as `number` instead of `number | null`.
+- **Unchanged:** a tag name may still repeat across types, and the app checks for that (§4.3 Tags).
+- **Why:** these rules can be expressed in SQLite, so the database enforces them instead of trusting every code path:
+  - Without the trim CHECK, "Rock " would slip past the unique-ignoring-case index on "Rock".
+  - A hash stored in uppercase would never match, so the library check couldn't find a moved file by its hash.
+  - The baseline is the cheapest place to add these. Adding a CHECK to an existing table later means rebuilding it (§5.3).
+
+## Appendix B: The table rebuild needs two more steps
+
+- **Date:** 2026-10-11
+- **Affects:** §5.3
+- **Was:** `rebuildTable()` creates `new_x`, copies the rows, drops `x`, renames `new_x` to `x`, then recreates `x`'s indexes, and any views or triggers that used it.
+- **Now:** `rebuildTable()` (`src/repo/rebuild_table.ts`) adds two steps:
+  - **The rename runs with `PRAGMA legacy_alter_table = ON`.** Since SQLite 3.26, `ALTER TABLE … RENAME` checks every trigger and view in the schema. Triggers on other tables that name the dropped `x` fail that check, so the rename aborts with "no such table". In the baseline, nearly every table is named by another table's trigger: `tracks_file_is_music_*` names `files`, for example. Legacy mode skips the check, and those triggers work again once `new_x` is renamed. Other tables' foreign keys are unaffected, since they refer to `x` by name.
+  - **The `AUTOINCREMENT` counter is put back.** Copying rows into `new_x` sets its counter to the highest id copied. If the last rows of `x` had been deleted, their ids would be handed out again, which §4.2 rules out. After the rename, the counter in `sqlite_sequence` is set back to the old value.
+
+  The helper also refuses to run unless foreign keys are off. It recreates `x`'s own indexes and triggers from their saved SQL. Triggers on other tables and views are left alone, since they name `x`. A migration that renames or removes a column they use has to recreate them itself.
+- **Why:** following §5.3 as written failed on this schema, at the rename. A version that got past the rename would have reused deleted ids. Both were found by testing the helper on a populated database.

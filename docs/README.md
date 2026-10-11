@@ -8,11 +8,13 @@ This folder documents Slunk as it's actually built, and it's kept up to date wit
 |---|---|
 | [`design/`](design/) | Design docs: numbered plans used for planning and prompting, and a history of the project. Start with [1_introduction.md](design/1_introduction.md). |
 | [`development/getting-started.md`](development/getting-started.md) | Setting up and running the project |
+| [`development/backend.md`](development/backend.md) | How the backend is built: the database, migrations, GraphQL, and its conventions |
 | [`development/frontend.md`](development/frontend.md) | How the frontend is built, and its conventions |
+| [`reference/database.md`](reference/database.md) | The database schema as built, and the rules it enforces |
 
 New docs are added as the code they describe lands:
-- `development/` holds how to set up, run and work on each project (e.g. `development/backend.md` once `slunk-be/` exists).
-- A new folder like `reference/` can hold the data model or the GraphQL API once they exist.
+- `development/` holds how to set up, run and work on each project.
+- `reference/` describes what's built: the database now, and the GraphQL API once it has more than a health check.
 
 ## Repository layout
 
@@ -20,12 +22,12 @@ New docs are added as the code they describe lands:
 docs/            documentation (this folder)
   design/        design docs (plans)
   development/   setup and conventions for the code
+  reference/     the database schema
+slunk-be/        backend
 slunk-fe/        frontend
 temp/            local assets for prompting, never committed
 AGENTS.md        instructions for AI coding agents (CLAUDE.md points to it)
 ```
-
-The backend, `slunk-be/`, doesn't exist yet. It's planned in [design §6](design/1_introduction.md#6-backend-shape).
 
 `temp/` holds files you share with an agent while prompting (screenshots, notes, sample data). Only its placeholder, `temp/.gitkeep`, is committed; the root `.gitignore` ignores everything else. Because those files exist only on your machine, nothing that gets committed (docs, design docs, code, commit messages) may reference them. If something in one of them belongs in the docs, write it into the doc itself.
 
