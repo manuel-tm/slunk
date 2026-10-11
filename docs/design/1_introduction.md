@@ -21,7 +21,7 @@ Design docs are plans, and after that a history of the project. A design doc is 
 - Slunk owns a database that is the source of truth for all music metadata. It's a record keeper: it never writes to the user's files, and only records where they are.
 - The data model covers:
   - files, artists, releases and tracks;
-  - release formats (Album, EP, Single, …), several per release;
+  - release formats (Album, EP, Single, …) and media (CD, Vinyl, …), several of each per release;
   - who performs each release and track, credits with user-defined roles, and various-artists releases;
   - file links;
   - typed tags, each single- or multi-value.
@@ -62,7 +62,7 @@ Music libraries usually treat the tags embedded in each file as the source of tr
 **Entities.** The user creates these and connects them:
 
 - **Artists:** any person or group making music, or related to making it. For example U2, Billie Joe Armstrong, Mozart, the Vienna Symphony Orchestra, or "Various Artists".
-- **Releases:** a set of tracks published together, such as an album, an EP or a single. Each release has formats from a list the user manages, and can have several: U2 & Green Day's "The Saints Are Coming" is a Single, and a vinyl album can be both an LP and an Album. A release can have many artists. On some releases each track names its own performers, for example a compilation by "Various Artists", or a soundtrack by "The High School Musical Cast" where each song names its singers.
+- **Releases:** a set of tracks published together, such as an album, an EP or a single. Each release has formats from a list the user manages, and can have several: U2 & Green Day's "The Saints Are Coming" is a Single, and a vinyl album can be both an LP and an Album. Releases also have media, from a second list: what they're on, such as CD or Vinyl. A release can have many artists. On some releases each track names its own performers, for example a compilation by "Various Artists", or a soundtrack by "The High School Musical Cast" where each song names its singers.
 - **Tracks:** one unit of music. Every track belongs to one release and is created from one registered audio file. A track names who performs it, which can differ from the release's artists. It can also have guests (features): "Hold On, We're Going Home" by Drake features Majid Jordan.
 - **Credits:** everyone else who worked on a release or track, each with a role: producer, writer, conductor, an instrument such as saxophone. The user manages the list of roles.
 - **Tags:** arbitrary metadata on releases, such as Genre, Label, Date purchased, Score or Price (USD).
@@ -103,9 +103,9 @@ The app's connection sets `foreign_keys = ON`, `journal_mode = WAL` and `busy_ti
   - RESTRICT for anything still in use:
     - a release with tracks;
     - a linked or credited artist;
-    - a tag definition, credit role or release format in use;
+    - a tag definition, credit role, release format or medium in use;
     - a file used anywhere: a track's audio, a cover, a picture or a file link.
-- **Naming:** join tables name both sides in alphabetical order: `artists_releases`, `artists_tracks`, `files_tracks`, `release_formats_releases`. Credit and tag value tables are named after their owner: `release_credits`, `track_credits`, `release_text_tags`.
+- **Naming:** join tables name both sides in alphabetical order: `artists_releases`, `artists_tracks`, `files_tracks`, `release_formats_releases`, `release_media_releases`. Credit and tag value tables hold more than a link (a role, a value), so they're named after their owner instead: `release_credits`, `track_credits`, `release_text_tags`. That also keeps the three tag value tables alike, where alphabetical order would give `date_tags_releases` but `releases_text_tags`.
 
 ### 4.3 Design decisions
 
@@ -139,6 +139,14 @@ The app's connection sets `foreign_keys = ON`, `journal_mode = WAL` and `busy_ti
 - Formats are plain data the user manages, like credit roles. A format still in use can't be deleted.
 - Names are stored as they're displayed ("EP", not "ep"), and are unique ignoring case.
 - The baseline migration adds starter formats: `Album`, `Compilation`, `EP`, `Live`, `LP`, `Mixtape`, `Single`, `Soundtrack`. Nothing depends on them.
+
+**Release media.**
+- A medium says what a release is on: `CD`, `Vinyl`, `Cassette`, `Digital`. Formats say what kind of release it is, and media what it's on. They're kept in separate lists so each stays clear, and filters like "EPs on vinyl" need no special case.
+- `LP` stays a format: a vinyl album has the medium `Vinyl` and the formats `LP` and `Album`.
+- A release can have several media, e.g. a box set with CDs and a DVD. `release_media_releases` links them. A release can also have none.
+- Media work like formats: the user manages the list, names are stored as they're displayed and unique ignoring case, and a medium still in use can't be deleted.
+- The baseline migration adds starter media: `Cassette`, `CD`, `Digital`, `Vinyl`. Nothing depends on them.
+- The trade-off: media belong to the release, not to each disc. That box set records `CD` and `DVD`, but not which disc is which. A later migration can add per-disc media if it's ever needed.
 
 **Dates.**
 - Dates are Unix epoch seconds, UTC. An unknown month or day becomes the first one (`1987` → `1987-01-01T00:00:00Z`). Pre-1970 dates are negative numbers, which works.
@@ -282,6 +290,15 @@ erDiagram
         int format_id FK
         int release_id FK
     }
+    release_media {
+        int id PK
+        text name UK "CD, Vinyl..."
+    }
+    release_media_releases {
+        int id PK
+        int medium_id FK
+        int release_id FK
+    }
     files_releases {
         int id PK
         int file_id FK
@@ -353,6 +370,8 @@ erDiagram
 
     releases ||--o{ release_formats_releases : "has format"
     release_formats ||--o{ release_formats_releases : "format of"
+    releases ||--o{ release_media_releases : "is on"
+    release_media ||--o{ release_media_releases : "medium of"
 
     releases ||--o{ files_releases : has
     artists ||--o{ artists_files : has
@@ -419,6 +438,14 @@ Every table is `STRICT`.
 **release_formats_releases**
 - `(release_id, format_id)` unique · index `format_id`
 - `release_id` ON DELETE CASCADE · `format_id` ON DELETE RESTRICT
+
+**release_media**
+- `name` unique, `COLLATE NOCASE`
+- starter rows from the baseline migration: `Cassette`, `CD`, `Digital`, `Vinyl`. Nothing depends on them.
+
+**release_media_releases**
+- `(release_id, medium_id)` unique · index `medium_id`
+- `release_id` ON DELETE CASCADE · `medium_id` ON DELETE RESTRICT
 
 **files_releases** / **artists_files** / **files_tracks**
 - `(release_id, file_id)` / `(artist_id, file_id)` / `(track_id, file_id)` unique · index `file_id`
@@ -569,7 +596,7 @@ The server runs `migrate` on start. Slunk is a local app with no deploy step, so
 
 - Never edit a migration once it has been applied anywhere. Write a new one.
 - Every `down` works, or it throws an explicit "irreversible" error.
-- Starter data, like the first credit roles and release formats, is inserted by migrations, and nothing may depend on it. Sample data goes in seeds.
+- Starter data, like the first credit roles, release formats and media, is inserted by migrations, and nothing may depend on it. Sample data goes in seeds.
 - Migrations don't import app code (entities, repositories). App code changes over time; a migration must not.
 
 ## 6. Backend shape
@@ -594,7 +621,7 @@ slunk-be/
     seeds.ts
   src/
     slunk/                 ← domain contexts (Phoenix: lib/slunk)
-      catalog/             ← artists, releases, formats, tracks, credits
+      catalog/             ← artists, releases, release formats and media, tracks, credits
       media/               ← files, registration, file links
       tagging/             ← tag definitions and values
     slunk_web/             ← (Phoenix: lib/slunk_web)
@@ -630,7 +657,7 @@ The baseline migration creates the whole §4.4 schema in phase 0, because the ca
 
 **Phase 2 — Catalog**
 - Artists, releases, tracks: list, create, edit, delete. A track is created from a registered audio file, and its duration is read from that file.
-- Release formats (list, add, rename, delete), and the formats of each release.
+- Release formats and media (list, add, rename, delete), and the formats and media of each release.
 - Release and track artists (with features), and the various-artists flag on releases.
 - Credit roles (list, add, rename, delete), and credits on releases and tracks.
 - Link images and other files to releases, artists and tracks. Set the cover and picture.
@@ -639,7 +666,7 @@ The baseline migration creates the whole §4.4 schema in phase 0, because the ca
   - each track's artists on a various-artists release, and only the features on a regular one;
   - credits under each track.
 - Optional: prefill new releases and tracks from the file's embedded tags, as suggestions only. Slunk stays the source of truth.
-- *Exit:* a user builds a complete release from registered files: formats, tracks, artists, credits and cover.
+- *Exit:* a user builds a complete release from registered files: formats, media, tracks, artists, credits and cover.
 
 **Phase 3 — Tags**
 - Tag definitions per type (text, real number, date), each single- or multi-value.
