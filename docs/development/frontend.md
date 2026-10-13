@@ -2,7 +2,10 @@
 
 > Keep this page up to date: any change to the frontend's stack, structure or conventions updates it in the same change.
 
-The frontend is at phase 0: the app shell (sidebar and page header), the dashboard with the backend's status, and a "not found" page.
+The frontend has phases 0 and 1:
+- the app shell (sidebar and page header) and a "not found" page;
+- the dashboard: the backend's status, and how many files are registered and unused;
+- the files pages: list, register, read and update.
 
 ## Stack
 
@@ -35,17 +38,30 @@ slunk-fe/
     index.css              Tailwind setup, theme tokens (light and dark), fonts
     routes/                one component per page
       dashboard.tsx        /
-      not-found.tsx        any unknown route
+      not-found.tsx        any unknown route or id
+      files/
+        list.tsx           /files
+        create.tsx         /files/create: browse for a folder, register files
+        read.tsx           /files/:id
+        update.tsx         /files/:id/update
     components/
       app-layout.tsx       the app shell: sidebar, and the page beside it
       app-sidebar.tsx      the sidebar and its section links
       page-header.tsx      a page's breadcrumb title, buttons and tabs
+      button-link.tsx      a link that looks like a button
+      query-error.tsx      a failed request or save, with the backend's reason
+      list/                pager, search box and sortable column header
+      folder-browser.tsx   browses the disk from the database's folder
+      file-type.tsx        a file type's label and icon
       theme-provider.tsx   light / dark / system theme
       ui/                  shadcn components (see "Installed components" below)
     gql/                   GraphQL types and graphql() (generated)
-    hooks/use-mobile.ts    useIsMobile(), used by the sidebar
+    hooks/
+      use-list-params.ts   a list's state in the query string
+      use-mobile.ts        useIsMobile(), used by the sidebar
     lib/
       apollo.ts            the Apollo client
+      format.ts            sizes, dates and times
       utils.ts             cn() helper
 ```
 
@@ -56,13 +72,41 @@ slunk-fe/
 - **Routes** are defined in `src/router.tsx`, as children of the `AppLayout` route, which renders the sidebar beside the current page. They follow the route map in [design §7.4](../design/1_introduction.md#74-route-map), and are added as their phase is built. The last one, `*`, shows `NotFound`.
 - **Pages** live in `src/routes/`, one component per route. Each one starts with a `PageHeader`: its breadcrumb title (`crumbs`), then its buttons and tabs as `children`, which go on the right. Every crumb but the last links to its `to`.
 - **The sidebar** lists a section once its phase is built, in `sections` in `app-sidebar.tsx`. A section's link stays active on its pages below it (`/artists/12` keeps Artists active).
-- **Links:** use React Router's `Link`. shadcn components built on Base UI take it through their `render` prop: `<SidebarMenuButton render={<Link to="/" />}>`. `Button` also needs `nativeButton={false}` when it renders a link.
+- **Unknown ids:** a read or update page whose query returns null renders `NotFound` (design §7.2).
+- **Links:** use React Router's `Link`.
+  - shadcn components built on Base UI take it through their `render` prop: `<SidebarMenuButton render={<Link to="/" />}>`.
+  - For a link that looks like a button, use `ButtonLink`. Don't render a `Link` inside `Button`: Base UI then gives the link `role="button"`, so assistive tech announces a button.
+  - A plain `<a>` styled with `buttonVariants()` needs `cn()` around it, which drops the base classes the variant overrides. Otherwise `border-transparent` hides the outline's border.
 
 ### Data
 
 - **Queries** are written with `graphql()` from `@/gql`, next to the component that uses them, and run with `useQuery` from `@apollo/client/react`. Each route sends one query, asking only for the fields it shows ([design §7.3](../design/1_introduction.md#73-loading-data)).
 - **Types:** `npm run codegen` generates `src/gql/` from the backend's schema (`../slunk-be/src/slunk_web/schema/*.graphql`) and the `graphql()` calls in `src/`, so `graphql()` returns a typed document. Run it after writing a query, or after the backend's schema changes. The generated files are committed, and lint and Prettier skip them.
-- **The backend:** the Apollo client sends requests to `/graphql`. In development, Vite proxies `/graphql` and `/files` to the backend at `127.0.0.1:4000`, and so does `vite preview`.
+- **Freshness:** queries use `cache-and-network`, set as the client's default. A page shows what's cached at once and asks the backend again, so a list never shows what was there before a change. After a delete, the page also evicts the deleted object from the cache.
+- **Mutations** reject when they fail, so callers wrap them in `try`. The page shows the error with `QueryError`, from the hook's `error`, and stays where it is.
+- **The backend:** the Apollo client sends requests to `/graphql`. Files are at `/raw/files/:id`, for `<img>`, `<audio>` and "Open the file". In development, Vite proxies `/graphql` and `/raw` to the backend at `127.0.0.1:4000`, and so does `vite preview`. Nothing else is proxied, so `/files/12` is always the app's page.
+
+### Lists
+
+Lists follow design §7.2:
+- **State:** `useListParams()` keeps a list's state in the query string: `page`, `sort`, `q` and filters such as `?type=` and `?unused=1`. Changing anything but the page goes back to page 1. Typing in the search box replaces the history entry instead of adding one.
+- **Controls** (`components/list/`):
+  - `Pager`: "1–50 of 172", with previous and next.
+  - `SearchBox`: searches after a pause in typing.
+  - `SortableHead`: a header that cycles ascending (`?sort=path`), descending (`?sort=-path`), then the default.
+- **Size:** lists ask for 50 rows a page.
+
+### Forms
+
+- **One form** serves both create and update, built from shadcn `field`s.
+- **Labels:** every control has one. A `Select` gets an `id` on its `SelectTrigger`, which the `FieldLabel`'s `htmlFor` points at.
+- **Saving** goes to the read page. When a save fails, the form stays and shows the backend's reason, which is often the database's own message (a CHECK or a trigger).
+
+### Deleting
+
+Delete is a button on the read page that opens an `alert-dialog` (design §7.2):
+- While something uses the row, the dialog lists what, instead of offering to delete.
+- After a delete, the app goes to the list, with a toast.
 
 ### Components
 

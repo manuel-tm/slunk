@@ -1,8 +1,7 @@
 import { FileQuestionIcon } from "lucide-react"
-import { Link } from "react-router"
 
+import { ButtonLink } from "@/components/button-link"
 import { PageHeader } from "@/components/page-header"
-import { Button } from "@/components/ui/button"
 import {
   Empty,
   EmptyContent,
@@ -26,9 +25,7 @@ export function NotFound() {
           <EmptyDescription>There's nothing at this address.</EmptyDescription>
         </EmptyHeader>
         <EmptyContent>
-          <Button nativeButton={false} render={<Link to="/" />}>
-            Go to the dashboard
-          </Button>
+          <ButtonLink to="/">Go to the dashboard</ButtonLink>
         </EmptyContent>
       </Empty>
     </>

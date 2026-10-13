@@ -8,6 +8,10 @@ const config: CodegenConfig = {
       plugins: ["typescript", "typescript-resolvers"],
       config: {
         contextType: "./context.ts#Context",
+        // Resolvers can return the database's numeric ids
+        scalars: { ID: { input: "string", output: "string | number" } },
+        // What resolvers return for these types, before their field resolvers
+        mappers: { File: "../../slunk/media/repository.ts#FileRecord" },
         useTypeImports: true,
         enumsAsTypes: true,
       },

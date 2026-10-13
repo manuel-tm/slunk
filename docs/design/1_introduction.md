@@ -659,6 +659,8 @@ The server runs `migrate` on start. Slunk is a local app with no deploy step, so
 
 ## 6. Backend shape
 
+> Changed during implementation, see [Appendix C](#appendix-c-file-bytes-are-served-under-raw).
+
 | Piece | Choice | Why |
 |---|---|---|
 | Runtime | Node 26 via mise (`.tool-versions`: `nodejs 26.10.0`) | Runs `.ts` directly, no build step. Same version as `slunk-fe` |
@@ -756,6 +758,8 @@ This section lists every route in `slunk-fe` and what each one shows. A page sho
 - Saving goes to the read page. If a save fails, the form stays, with the database's reason (e.g. a single-value tag that's already set).
 
 ### 7.3 Loading data
+
+> Changed during implementation, see [Appendix C](#appendix-c-file-bytes-are-served-under-raw).
 
 Pages are designed to load little:
 - **One query per route.** Each route sends one GraphQL query, asking only for the fields it shows. Anything not on screen is either its own route (each tab is a route) or loads when it's opened (a picker's options).
@@ -966,6 +970,8 @@ What this means for the user:
 
 ## 8. Phases
 
+> Changed during implementation, see [Appendix C](#appendix-c-file-bytes-are-served-under-raw).
+
 Each phase is a vertical slice (migration if needed → repository → context → GraphQL → UI) and ends with something usable. A phase's UI is the routes marked with it in the route map (§7.4).
 
 The baseline migration creates the whole §4.4 schema in phase 0, because the catalog tables already reference `files`. Later phases only add migrations for new things.
@@ -1053,3 +1059,11 @@ Files come before Catalog because every track is created from a registered audio
 
   The helper also refuses to run unless foreign keys are off. It recreates `x`'s own indexes and triggers from their saved SQL. Triggers on other tables and views are left alone, since they name `x`. A migration that renames or removes a column they use has to recreate them itself.
 - **Why:** following §5.3 as written failed on this schema, at the rename. A version that got past the rename would have reused deleted ids. Both were found by testing the helper on a populated database.
+
+## Appendix C: File bytes are served under `/raw`
+
+- **Date:** 2026-10-11
+- **Affects:** §6 (`files_controller.ts`), §7.3 Images, §8 Phase 0 (the Vite proxy)
+- **Was:** the backend serves a file's bytes at `GET /files/:id`, and Vite proxies `/graphql` and `/files` to the backend.
+- **Now:** the bytes are at `GET /raw/files/:id`, and Vite proxies `/graphql` and `/raw`.
+- **Why:** `/files/:id` is also the frontend's read page for a file (§7.4). Proxying `/files` sent every page under it to the backend: loading or refreshing `/files?unused=1` got a 404, and `/files/12` returned the file instead of its page. Only navigating inside the app worked. No frontend route starts with `/raw`, so the two can't collide.

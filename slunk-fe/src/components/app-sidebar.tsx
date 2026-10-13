@@ -1,4 +1,4 @@
-import { LayoutDashboardIcon, type LucideIcon } from "lucide-react"
+import { FilesIcon, LayoutDashboardIcon, type LucideIcon } from "lucide-react"
 import { Link, useMatch } from "react-router"
 
 import {
@@ -17,6 +17,7 @@ type Section = { title: string; to: string; icon: LucideIcon }
 // A section appears once its phase is built (design §7.1)
 const sections: Section[] = [
   { title: "Dashboard", to: "/", icon: LayoutDashboardIcon },
+  { title: "Files", to: "/files", icon: FilesIcon },
 ]
 
 export function AppSidebar() {

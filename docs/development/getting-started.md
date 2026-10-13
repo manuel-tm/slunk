@@ -19,7 +19,7 @@ npm run db:migrate
 npm run dev
 ```
 
-- `.env` sets `SLUNK_DB`, the database. The example points it at `dev-library/slunk.db`, a scratch folder for development. Never point it at a real music library.
+- `.env` sets `SLUNK_DB`, the database. The example points it at `dev-library/slunk.db`, a scratch folder for development. Put sample music files and images in `dev-library/` to register them. Never point it at a real music library.
 - `npm run db:migrate` creates the database. The server also migrates on start, so this step is optional.
 - `npm run db:seed` adds sample data, if you want some.
 - The server listens on `http://127.0.0.1:4000/graphql`.
@@ -52,7 +52,7 @@ npm install
 npm run dev
 ```
 
-Vite prints the local URL when it starts. It proxies `/graphql` and `/files` to the backend at `127.0.0.1:4000`, so start the backend first. The dashboard shows whether it can reach it.
+Vite prints the local URL when it starts. It proxies `/graphql` and `/raw` (the files' bytes) to the backend at `127.0.0.1:4000`, so start the backend first. The dashboard shows whether it can reach it.
 
 Scripts, run inside `slunk-fe/`:
 

@@ -14,7 +14,7 @@ This folder documents Slunk as it's actually built, and it's kept up to date wit
 
 New docs are added as the code they describe lands:
 - `development/` holds how to set up, run and work on each project.
-- `reference/` describes what's built: the database now, and the GraphQL API once it has more than a health check.
+- `reference/` describes what's built: the database. The GraphQL API is documented by its SDL, in `slunk-be/src/slunk_web/schema/`, and summed up in [development/backend.md](development/backend.md#graphql).
 
 ## Repository layout
 
