@@ -2,6 +2,7 @@ import type { Server } from "node:http"
 import { ApolloServer } from "@apollo/server"
 import { expressMiddleware } from "@as-integrations/express5"
 import express from "express"
+import { formatError } from "./errors.ts"
 import { filesController } from "./files_controller.ts"
 import type { App, Context } from "./schema/context.ts"
 import { resolvers, typeDefs } from "./schema/index.ts"
@@ -16,7 +17,7 @@ const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"])
  * should reach it.
  */
 export async function startEndpoint(app: App, port: number): Promise<Server> {
-  const apollo = new ApolloServer<Context>({ typeDefs, resolvers })
+  const apollo = new ApolloServer<Context>({ typeDefs, resolvers, formatError })
   await apollo.start()
 
   const server = express()
@@ -30,7 +31,7 @@ export async function startEndpoint(app: App, port: number): Promise<Server> {
     "/graphql",
     express.json(),
     expressMiddleware(apollo, {
-      context: async () => ({ ...app, loaders: createLoaders(app.media) }),
+      context: async () => ({ ...app, loaders: createLoaders(app) }),
     })
   )
   server.get("/raw/files/:id", filesController(app.media))

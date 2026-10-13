@@ -1,6 +1,6 @@
 import { useMutation, useQuery } from "@apollo/client/react"
 import { CircleAlertIcon, ExternalLinkIcon } from "lucide-react"
-import { useNavigate, useParams } from "react-router"
+import { Link, useNavigate, useParams } from "react-router"
 import { toast } from "sonner"
 
 import { ButtonLink } from "@/components/button-link"
@@ -196,9 +196,30 @@ function Uses({ file }: { file: File }) {
         ) : (
           <UseList uses={file.uses} />
         )}
+        {file.type === "music" &&
+          !file.uses.some((use) => use.kind === "track_audio") && (
+            <ButtonLink
+              variant="outline"
+              size="sm"
+              className="mt-3"
+              to={`/tracks/create?file=${file.id}`}
+            >
+              Create track
+            </ButtonLink>
+          )}
       </CardContent>
     </Card>
   )
+}
+
+const USE_URLS: Record<FileUseKind, string> = {
+  track_audio: "/tracks",
+  release_cover: "/releases",
+  artist_picture: "/artists",
+  label_picture: "/labels",
+  release_link: "/releases",
+  artist_link: "/artists",
+  track_link: "/tracks",
 }
 
 function UseList({ uses }: { uses: File["uses"] }) {
@@ -207,7 +228,12 @@ function UseList({ uses }: { uses: File["uses"] }) {
       {uses.map((use) => (
         <li key={`${use.kind}-${use.entityId}`}>
           <span className="text-muted-foreground">{USE_LABELS[use.kind]}</span>{" "}
-          {use.name}
+          <Link
+            to={`${USE_URLS[use.kind]}/${use.entityId}`}
+            className="hover:underline"
+          >
+            {use.name}
+          </Link>
           {use.note && (
             <span className="text-muted-foreground"> ({use.note})</span>
           )}

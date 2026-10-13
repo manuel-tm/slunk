@@ -26,3 +26,40 @@ export function formatDate(seconds: number): string {
     dateStyle: "medium",
   })
 }
+
+/** A duration as `m:ss`, or `h:mm:ss` from an hour. */
+export function formatDuration(ms: number | null | undefined): string {
+  if (ms == null) return ""
+  const total = Math.round(ms / 1000)
+  const hours = Math.floor(total / 3600)
+  const minutes = Math.floor((total % 3600) / 60)
+  const seconds = String(total % 60).padStart(2, "0")
+  return hours > 0
+    ? `${hours}:${String(minutes).padStart(2, "0")}:${seconds}`
+    : `${minutes}:${seconds}`
+}
+
+/**
+ * A release date with only its known parts (design §7.2): `2006`,
+ * `Jan 2006` or `Jan 10, 2006`. It comes as `2006`, `2006-01` or
+ * `2006-01-10`, and isn't shifted to the viewer's time zone.
+ */
+export function formatReleased(released: string | null | undefined): string {
+  if (!released) return ""
+  const [year, month, day] = released.split("-").map(Number)
+  const date = new Date(Date.UTC(year, (month ?? 1) - 1, day ?? 1))
+  return date.toLocaleDateString(undefined, {
+    timeZone: "UTC",
+    year: "numeric",
+    month: month ? "short" : undefined,
+    day: day ? "numeric" : undefined,
+  })
+}
+
+/**
+ * A credit role as a credit line shows it: "producer" → "Producer". Roles
+ * are stored as the user typed them, often lowercase.
+ */
+export function formatRole(name: string): string {
+  return name.charAt(0).toUpperCase() + name.slice(1)
+}

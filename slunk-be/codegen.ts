@@ -1,5 +1,8 @@
 import type { CodegenConfig } from "@graphql-codegen/cli"
 
+const CATALOG = "../../slunk/catalog/repository.ts"
+const MEDIA = "../../slunk/media/repository.ts"
+
 // Resolver types from the SDL: `npm run codegen` after changing a .graphql file
 const config: CodegenConfig = {
   schema: "src/slunk_web/schema/*.graphql",
@@ -8,12 +11,31 @@ const config: CodegenConfig = {
       plugins: ["typescript", "typescript-resolvers"],
       config: {
         contextType: "./context.ts#Context",
-        // Resolvers can return the database's numeric ids
-        scalars: { ID: { input: "string", output: "string | number" } },
-        // What resolvers return for these types, before their field resolvers
-        mappers: { File: "../../slunk/media/repository.ts#FileRecord" },
         useTypeImports: true,
         enumsAsTypes: true,
+        // Resolvers can return the database's numeric ids
+        scalars: { ID: { input: "string", output: "string | number" } },
+        // GraphQL fills in arguments and input fields that have defaults
+        avoidOptionals: { defaultValue: true },
+        // What resolvers return for these types, before their field
+        // resolvers. Imported as `…Model`, so names don't clash.
+        mapperTypeSuffix: "Model",
+        mappers: {
+          File: `${MEDIA}#FileRecord`,
+          FileLink: `${MEDIA}#FileLink`,
+          Artist: `${CATALOG}#Artist`,
+          Label: `${CATALOG}#Label`,
+          Release: `${CATALOG}#Release`,
+          Track: `${CATALOG}#Track`,
+          Credit: `${CATALOG}#Credit`,
+          ListItem: `${CATALOG}#ListItem`,
+          ReleaseFormat: `${CATALOG}#ListItem`,
+          ReleaseMedium: `${CATALOG}#ListItem`,
+          CreditRole: `${CATALOG}#ListItem`,
+          Appearance: `${CATALOG}#Appearance`,
+          ArtistCredit: `${CATALOG}#ArtistCredit`,
+          FormatCount: `${CATALOG}#FormatCount`,
+        },
       },
     },
   },

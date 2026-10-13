@@ -3,6 +3,8 @@ import { CircleAlertIcon } from "lucide-react"
 import type { ReactNode } from "react"
 import { Link } from "react-router"
 
+import { Cover } from "@/components/cover"
+import { artistUrl, Names } from "@/components/names"
 import { PageHeader } from "@/components/page-header"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
@@ -15,6 +17,7 @@ import {
 } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { graphql } from "@/gql"
+import { formatDuration } from "@/lib/format"
 
 const DashboardQuery = graphql(`
   query Dashboard {
@@ -26,18 +29,38 @@ const DashboardQuery = graphql(`
       total
       unused
     }
+    catalogTotals {
+      releases
+      artists
+      tracks
+      labels
+      durationMs
+    }
+    newest: releases(perPage: 12) {
+      items {
+        id
+        title
+        cover {
+          id
+        }
+        artists {
+          id
+          name
+        }
+      }
+    }
   }
 `)
 
-/** `/` (design §7.5). Each part appears once its phase is built. */
+/** `/` (design §7.5): numbers that are cheap to compute, and the latest additions. */
 export function Dashboard() {
   const { data, error } = useQuery(DashboardQuery)
 
   return (
     <>
       <PageHeader crumbs={[{ label: "Dashboard" }]} />
-      <div className="grid gap-4 p-4 lg:grid-cols-3">
-        <Card className="lg:col-span-3">
+      <div className="flex flex-col gap-4 p-4">
+        <Card>
           <CardHeader>
             <CardTitle>Status</CardTitle>
             <CardDescription>
@@ -78,16 +101,84 @@ export function Dashboard() {
         </Card>
         {data && (
           <>
-            <Total title="Files" to="/files" value={data.fileCounts.total}>
-              Registered files
-            </Total>
-            <Total
-              title="Unused files"
-              to="/files?unused=1"
-              value={data.fileCounts.unused}
-            >
-              Registered files nothing uses yet
-            </Total>
+            <div className="grid gap-4 sm:grid-cols-3 xl:grid-cols-6">
+              <Total
+                title="Releases"
+                to="/releases"
+                value={data.catalogTotals.releases}
+              />
+              <Total
+                title="Artists"
+                to="/artists"
+                value={data.catalogTotals.artists}
+              />
+              <Total
+                title="Tracks"
+                to="/tracks"
+                value={data.catalogTotals.tracks}
+              >
+                {formatDuration(data.catalogTotals.durationMs) || "0:00"}{" "}
+                playing time
+              </Total>
+              <Total
+                title="Labels"
+                to="/labels"
+                value={data.catalogTotals.labels}
+              />
+              <Total title="Files" to="/files" value={data.fileCounts.total} />
+              <Total
+                title="Unused files"
+                to="/files?unused=1"
+                value={data.fileCounts.unused}
+              >
+                Registered files nothing uses yet
+              </Total>
+            </div>
+            <Card>
+              <CardHeader>
+                <CardTitle>Newest releases</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {data.newest.items.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">
+                    No releases yet.{" "}
+                    <Link
+                      to="/import"
+                      className="text-foreground hover:underline"
+                    >
+                      Import a folder
+                    </Link>{" "}
+                    to make one.
+                  </p>
+                ) : (
+                  <div className="grid grid-cols-[repeat(auto-fill,minmax(9rem,1fr))] gap-4">
+                    {data.newest.items.map((release) => (
+                      <div
+                        key={release.id}
+                        className="flex flex-col gap-1 text-xs"
+                      >
+                        <Link to={`/releases/${release.id}`}>
+                          <Cover
+                            file={release.cover}
+                            alt={`${release.title} cover`}
+                            className="w-full"
+                          />
+                        </Link>
+                        <Link
+                          to={`/releases/${release.id}`}
+                          className="font-medium hover:underline"
+                        >
+                          {release.title}
+                        </Link>
+                        <span className="text-muted-foreground">
+                          <Names items={release.artists} to={artistUrl} />
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </>
         )}
       </div>
@@ -105,7 +196,7 @@ function Total({
   title: string
   to: string
   value: number
-  children: ReactNode
+  children?: ReactNode
 }) {
   return (
     <Link to={to} className="group">
@@ -116,9 +207,11 @@ function Total({
             {value.toLocaleString()}
           </CardTitle>
         </CardHeader>
-        <CardContent className="text-xs text-muted-foreground">
-          {children}
-        </CardContent>
+        {children && (
+          <CardContent className="text-xs text-muted-foreground">
+            {children}
+          </CardContent>
+        )}
       </Card>
     </Link>
   )

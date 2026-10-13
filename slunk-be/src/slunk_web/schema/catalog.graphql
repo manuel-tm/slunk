@@ -1,0 +1,366 @@
+extend type Query {
+  artists(page: Int! = 1, perPage: Int! = 50, "`name`, or `id`, with `-` for descending" sort: String, q: String): ArtistPage!
+  artist(id: ID!): Artist
+  labels(page: Int! = 1, perPage: Int! = 50, "`name`, or `id`, with `-` for descending" sort: String, q: String): LabelPage!
+  label(id: ID!): Label
+  "Releases. The filters combine: `format` and `medium` give \"EPs on vinyl\"."
+  releases(
+    page: Int! = 1
+    perPage: Int! = 50
+    "`title`, `released` (undated last) or `id`, with `-` for descending"
+    sort: String
+    "Part of the title"
+    q: String
+    format: ID
+    medium: ID
+    label: ID
+    "Releases the artist is a release artist on"
+    artist: ID
+  ): ReleasePage!
+  release(id: ID!): Release
+  "Releases with this title, ignoring case: an import checks it so a release isn't imported twice."
+  releasesTitled(title: String!): [Release!]!
+  tracks(page: Int! = 1, perPage: Int! = 50, "`title`, or `id`, with `-` for descending" sort: String, q: String, release: ID): TrackPage!
+  track(id: ID!): Track
+  "Release formats, release media or credit roles."
+  listItems(kind: ListKind!, page: Int! = 1, perPage: Int! = 50, "`name`, or `id`, with `-` for descending" sort: String, q: String): ListItemPage!
+  listItem(kind: ListKind!, id: ID!): ListItem
+  catalogTotals: CatalogTotals!
+  "What a folder suggests for a new release, from its files' embedded tags, or else its name."
+  releaseSuggestion(folder: String!): ReleaseSuggestion!
+  "A row for each audio file in a folder and its subfolders: from embedded tags, or else the file's name (`CD2/03 Title.flac` is disc 2, track 3)."
+  trackSuggestions(folder: String!): [TrackSuggestion!]!
+}
+
+extend type Mutation {
+  createArtist(input: ArtistInput!): Artist!
+  updateArtist(id: ID!, input: ArtistInput!): Artist!
+  "Fails while the artist is a release or track artist, or credited."
+  deleteArtist(id: ID!): ID!
+  createLabel(input: LabelInput!): Label!
+  updateLabel(id: ID!, input: LabelInput!): Label!
+  "Fails while the label is on a release."
+  deleteLabel(id: ID!): ID!
+  createRelease(input: ReleaseInput!): Release!
+  "The details: title, date, artists, labels, formats, media, catalog number."
+  updateRelease(id: ID!, input: ReleaseInput!): Release!
+  "Fails while the release has tracks."
+  deleteRelease(id: ID!): ID!
+  "Saves the whole track list: rows with an id are updated, the others create tracks, and tracks left out are deleted. Their files stay registered."
+  setReleaseTracks(id: ID!, tracks: [ReleaseTrackInput!]!): Release!
+  "Sets the cover and replaces the file links. Files given by path are registered first."
+  setReleaseFiles(id: ID!, input: ReleaseFilesInput!): Release!
+  "Replaces the release's credits and its tracks' credits."
+  setReleaseCredits(id: ID!, input: ReleaseCreditsInput!): Release!
+  "Creates a track from a registered audio file, reading its duration."
+  createTrack(input: TrackInput!): Track!
+  updateTrack(id: ID!, input: TrackInput!): Track!
+  "Deletes a track, its artists, credits and file links. Its audio file stays registered."
+  deleteTrack(id: ID!): ID!
+  createListItem(kind: ListKind!, name: String!): ListItem!
+  renameListItem(kind: ListKind!, id: ID!, name: String!): ListItem!
+  "Fails while anything uses it."
+  deleteListItem(kind: ListKind!, id: ID!): ID!
+}
+
+type Artist {
+  id: ID!
+  name: String!
+  "The primary image. Other images are file links."
+  picture: File
+  insertedAt: Float!
+  updatedAt: Float!
+  files: [FileLink!]!
+  "What keeps it from being deleted, in words."
+  blockers: [String!]!
+  "Releases where the artist performs or is featured on tracks, without being a release artist."
+  appearances: [Appearance!]!
+  credits: [ArtistCredit!]!
+  "How many of the artist's releases have each format."
+  formatCounts: [FormatCount!]!
+  counts: ArtistCounts!
+}
+
+"The artist page's tabs, counted."
+type ArtistCounts {
+  releases: Int!
+  appearances: Int!
+  credits: Int!
+  "The picture, and the linked files"
+  files: Int!
+}
+
+type Appearance {
+  release: Release!
+  "The artist's tracks on it"
+  tracks: [Track!]!
+}
+
+type ArtistCredit {
+  role: CreditRole!
+  release: Release!
+  "Null for a credit on the release itself"
+  track: Track
+}
+
+type FormatCount {
+  format: ReleaseFormat!
+  count: Int!
+}
+
+type Label {
+  id: ID!
+  name: String!
+  "The logo"
+  picture: File
+  insertedAt: Float!
+  updatedAt: Float!
+  releaseCount: Int!
+  blockers: [String!]!
+}
+
+type Release {
+  id: ID!
+  title: String!
+  "With only its known parts: `2006`, `2006-01` or `2006-01-10`."
+  released: String
+  catalogNumber: String
+  cover: File
+  "Each track names its own performers: compilations, soundtracks, cast recordings."
+  variousArtists: Boolean!
+  insertedAt: Float!
+  updatedAt: Float!
+  "Who the release is by, in display order."
+  artists: [Artist!]!
+  labels: [Label!]!
+  formats: [ReleaseFormat!]!
+  media: [ReleaseMedium!]!
+  "In order: disc, then number."
+  tracks: [Track!]!
+  credits: [Credit!]!
+  files: [FileLink!]!
+  "The cover and the linked files."
+  fileCount: Int!
+  "The tracks' total playing time, or null with no durations."
+  durationMs: Float
+  blockers: [String!]!
+}
+
+type Track {
+  id: ID!
+  title: String!
+  "Read from the audio file. Null when it can't be read."
+  durationMs: Float
+  trackNumber: Int!
+  cdNumber: Int!
+  release: Release!
+  "The audio file"
+  file: File!
+  insertedAt: Float!
+  updatedAt: Float!
+  "The track's own performers, without features."
+  artists: [Artist!]!
+  "Guests, shown as \"(feat. …)\"."
+  features: [Artist!]!
+  "Who performs it (design §4.3): its own artists. On a regular release with none, the release's artists; on a various-artists release, nobody."
+  performers: [Artist!]!
+  credits: [Credit!]!
+  files: [FileLink!]!
+}
+
+"An artist's role on a release or track. It has no id: release and track credits live in different tables, so their ids would collide."
+type Credit {
+  artist: Artist!
+  role: CreditRole!
+}
+
+enum ListKind {
+  release_formats
+  release_media
+  credit_roles
+}
+
+"A row of a list the user manages: a release format, release medium or credit role."
+interface ListItem {
+  id: ID!
+  kind: ListKind!
+  name: String!
+  "Releases with the format or medium, or credits with the role."
+  uses: Int!
+  blockers: [String!]!
+}
+
+type ReleaseFormat implements ListItem {
+  id: ID!
+  kind: ListKind!
+  name: String!
+  uses: Int!
+  blockers: [String!]!
+}
+
+type ReleaseMedium implements ListItem {
+  id: ID!
+  kind: ListKind!
+  name: String!
+  uses: Int!
+  blockers: [String!]!
+}
+
+type CreditRole implements ListItem {
+  id: ID!
+  kind: ListKind!
+  name: String!
+  uses: Int!
+  blockers: [String!]!
+}
+
+type FileLink {
+  file: File!
+  note: String
+}
+
+type ArtistPage {
+  items: [Artist!]!
+  total: Int!
+}
+
+type LabelPage {
+  items: [Label!]!
+  total: Int!
+}
+
+type ReleasePage {
+  items: [Release!]!
+  total: Int!
+}
+
+type TrackPage {
+  items: [Track!]!
+  total: Int!
+}
+
+type ListItemPage {
+  items: [ListItem!]!
+  total: Int!
+}
+
+type CatalogTotals {
+  releases: Int!
+  artists: Int!
+  tracks: Int!
+  labels: Int!
+  "Every track's duration, added up"
+  durationMs: Float!
+}
+
+type ReleaseSuggestion {
+  "The album tag, or else the folder's name"
+  title: String!
+  released: String
+  "The album artist tags, or the artist tags"
+  artists: [ArtistSuggestion!]!
+  "Releases with that title already, so the folder isn't imported twice"
+  sameTitle: [Release!]!
+  music: Int!
+  images: Int!
+  others: Int!
+}
+
+"A name from the tags, and the artist with exactly that name, ignoring case, if there's one."
+type ArtistSuggestion {
+  name: String!
+  artist: Artist
+}
+
+type TrackSuggestion {
+  path: String!
+  "The file's registration, if it's registered"
+  file: File
+  "The track the file is already the audio of, on any release"
+  track: Track
+  cdNumber: Int!
+  trackNumber: Int!
+  title: String!
+  artists: [ArtistSuggestion!]!
+  durationMs: Float
+}
+
+"A file by id, or a path to register first."
+input FileRefInput {
+  fileId: ID
+  path: String
+}
+
+input FileLinkInput {
+  fileId: ID
+  path: String
+  note: String
+}
+
+input ArtistInput {
+  name: String!
+  pictureId: ID
+  files: [FileLinkInput!]! = []
+}
+
+input LabelInput {
+  name: String!
+  pictureId: ID
+}
+
+input ReleaseInput {
+  title: String!
+  "`2006`, `2006-01` or `2006-01-10`, which also sets the precision"
+  released: String
+  catalogNumber: String
+  variousArtists: Boolean! = false
+  "In display order, like the other lists"
+  artistIds: [ID!]!
+  labelIds: [ID!]! = []
+  formatIds: [ID!]! = []
+  mediumIds: [ID!]! = []
+}
+
+"A track of the release: `id` for one it has, else `fileId` or `path` for a new one."
+input ReleaseTrackInput {
+  id: ID
+  fileId: ID
+  path: String
+  cdNumber: Int! = 1
+  trackNumber: Int!
+  title: String!
+  artistIds: [ID!]! = []
+  featureIds: [ID!]! = []
+}
+
+input ReleaseFilesInput {
+  cover: FileRefInput
+  files: [FileLinkInput!]!
+}
+
+input CreditInput {
+  artistId: ID!
+  roleId: ID!
+}
+
+input TrackCreditsInput {
+  trackId: ID!
+  credits: [CreditInput!]!
+}
+
+input ReleaseCreditsInput {
+  credits: [CreditInput!]!
+  tracks: [TrackCreditsInput!]! = []
+}
+
+input TrackInput {
+  releaseId: ID!
+  fileId: ID!
+  cdNumber: Int! = 1
+  trackNumber: Int!
+  title: String!
+  artistIds: [ID!]! = []
+  featureIds: [ID!]! = []
+  credits: [CreditInput!]! = []
+  files: [FileLinkInput!]! = []
+}

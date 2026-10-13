@@ -193,7 +193,16 @@ export function FileList() {
                   <TableCell className="font-mono" title={file.sha256}>
                     {file.sha256.slice(0, 12)}…
                   </TableCell>
-                  <TableCell>{file.track?.title}</TableCell>
+                  <TableCell>
+                    {file.track && (
+                      <Link
+                        to={`/tracks/${file.track.id}`}
+                        className="hover:underline"
+                      >
+                        {file.track.title}
+                      </Link>
+                    )}
+                  </TableCell>
                   <TableCell>{formatDateTime(file.insertedAt)}</TableCell>
                   <TableCell>{formatDateTime(file.updatedAt)}</TableCell>
                 </TableRow>

@@ -45,12 +45,15 @@ export type FileQuery = {
   type?: FileType
   /** Only files nothing uses */
   unused?: boolean
+  /** Only files that aren't a track's audio */
+  withoutTrack?: boolean
 }
 
 /** What the media context needs from storage. src/repo/ implements it. */
 export interface FilesRepository {
   list(query: FileQuery): Promise<{ files: FileRecord[]; total: number }>
   get(id: number): Promise<FileRecord | null>
+  getMany(ids: readonly number[]): Promise<FileRecord[]>
   findByPaths(paths: string[]): Promise<FileRecord[]>
   insert(files: NewFile[]): Promise<FileRecord[]>
   /** Also sets `updatedAt`. Null if there's no such file. */
@@ -58,10 +61,18 @@ export interface FilesRepository {
   delete(id: number): Promise<void>
   uses(id: number): Promise<FileUse[]>
   counts(): Promise<{ total: number; unused: number }>
-  /** The tracks that have these files as their audio, by file id. */
-  tracksOf(fileIds: number[]): Promise<Map<number, TrackRef>>
   /** Whether a registered path starts with `prefix`, or doesn't. */
   hasPathStartingWith(prefix: string, negate?: boolean): Promise<boolean>
 }
 
-export type TrackRef = { id: number; title: string }
+/** What a file link belongs to (design §4.3 File links). */
+export type LinkOwner = "release" | "artist" | "track"
+
+export type FileLink = { fileId: number; note: string | null }
+
+export interface FileLinksRepository {
+  /** Links by owner, in the order they were added */
+  of(owner: LinkOwner, ids: readonly number[]): Promise<Map<number, FileLink[]>>
+  /** Replaces the owner's links */
+  set(owner: LinkOwner, id: number, links: FileLink[]): Promise<void>
+}

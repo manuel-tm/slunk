@@ -1,0 +1,201 @@
+import type {
+  FileLinksRepository,
+  FilesRepository,
+} from "../media/repository.ts"
+import type { Paging } from "../paging.ts"
+import type { DatePrecision } from "./dates.ts"
+
+export type Artist = {
+  id: number
+  name: string
+  /** A file id */
+  picture: number | null
+  insertedAt: number
+  updatedAt: number
+}
+
+/** Labels have the same shape: `picture` is the logo. */
+export type Label = Artist
+
+export type Release = {
+  id: number
+  title: string
+  /** Epoch seconds, midnight UTC */
+  releaseDate: number | null
+  releaseDatePrecision: DatePrecision | null
+  catalogNumber: string | null
+  /** A file id */
+  coverPicture: number | null
+  variousArtists: boolean
+  insertedAt: number
+  updatedAt: number
+}
+
+export type Track = {
+  id: number
+  title: string
+  durationMs: number | null
+  trackNumber: number
+  cdNumber: number
+  releaseId: number
+  fileId: number
+  insertedAt: number
+  updatedAt: number
+}
+
+export type TrackArtist = { artistId: number; featured: boolean }
+
+export type Credit = { id: number; artistId: number; roleId: number }
+
+/** The lists the user manages, which are just names. */
+export type ListKind = "release_formats" | "release_media" | "credit_roles"
+
+export type ListItem = { kind: ListKind; id: number; name: string }
+
+/** A release the artist is on as a track artist only, with those tracks. */
+export type Appearance = { releaseId: number; trackIds: number[] }
+
+export type ArtistCredit = {
+  roleId: number
+  releaseId: number
+  trackId: number | null
+}
+
+export type FormatCount = { formatId: number; count: number }
+
+export type Page<T> = { items: T[]; total: number }
+
+export type ListQuery<Sort extends string> = Paging & {
+  sort: Sort | "id"
+  descending: boolean
+  search?: string
+}
+
+export type NamedValues = { name: string; picture: number | null }
+
+/** Artists and labels: named entities with a picture. */
+export interface NamedRepository<T> {
+  list(query: ListQuery<"name">): Promise<Page<T>>
+  get(id: number): Promise<T | null>
+  getMany(ids: readonly number[]): Promise<T[]>
+  /** Exact names, ignoring case */
+  findByNames(names: string[]): Promise<T[]>
+  insert(values: NamedValues): Promise<T>
+  update(id: number, values: Partial<NamedValues>): Promise<T | null>
+  delete(id: number): Promise<void>
+}
+
+export interface ArtistsRepository extends NamedRepository<Artist> {
+  /** Where the artist is used, which keeps it from being deleted */
+  usage(
+    id: number
+  ): Promise<{ releases: number; tracks: number; credits: number }>
+  /** Releases where the artist is on tracks but isn't a release artist */
+  appearances(id: number): Promise<{ releaseId: number; trackId: number }[]>
+  credits(id: number): Promise<ArtistCredit[]>
+  /** How many of the artist's releases have each format */
+  formatCounts(id: number): Promise<FormatCount[]>
+}
+
+export interface LabelsRepository extends NamedRepository<Label> {
+  releaseCount(id: number): Promise<number>
+}
+
+export type ReleaseQuery = ListQuery<"title" | "released"> & {
+  format?: number
+  medium?: number
+  label?: number
+  artist?: number
+}
+
+export type ReleaseValues = Omit<Release, "id" | "insertedAt" | "updatedAt">
+
+/** The rows that link a release to artists, labels, formats or media. */
+export type ReleaseLink = "artists" | "labels" | "formats" | "media"
+
+export interface ReleasesRepository {
+  list(query: ReleaseQuery): Promise<Page<Release>>
+  get(id: number): Promise<Release | null>
+  getMany(ids: readonly number[]): Promise<Release[]>
+  /** Same title, ignoring case */
+  findByTitle(title: string): Promise<Release[]>
+  insert(values: ReleaseValues): Promise<Release>
+  update(id: number, values: Partial<ReleaseValues>): Promise<Release | null>
+  delete(id: number): Promise<void>
+  /** Linked ids by release, in display order */
+  linksOf(
+    link: ReleaseLink,
+    releaseIds: readonly number[]
+  ): Promise<Map<number, number[]>>
+  /** Replaces the links; their order is the display order */
+  setLinks(link: ReleaseLink, releaseId: number, ids: number[]): Promise<void>
+  trackCount(id: number): Promise<number>
+}
+
+export type TrackValues = Omit<Track, "id" | "insertedAt" | "updatedAt">
+
+export interface TracksRepository {
+  list(query: ListQuery<"title"> & { release?: number }): Promise<Page<Track>>
+  get(id: number): Promise<Track | null>
+  getMany(ids: readonly number[]): Promise<Track[]>
+  /** The track each file is the audio of, by file id */
+  ofFiles(fileIds: readonly number[]): Promise<Map<number, Track>>
+  /** By release, in order: disc, then number */
+  ofReleases(releaseIds: readonly number[]): Promise<Map<number, Track[]>>
+  insert(values: TrackValues): Promise<Track>
+  update(id: number, values: Partial<TrackValues>): Promise<Track | null>
+  delete(id: number): Promise<void>
+  /** Moves a release's track numbers out of the way, to renumber them */
+  shiftNumbers(releaseId: number, by: number): Promise<void>
+  /** Own artists by track, in display order */
+  artistsOf(trackIds: readonly number[]): Promise<Map<number, TrackArtist[]>>
+  setArtists(trackId: number, artists: TrackArtist[]): Promise<void>
+}
+
+export interface ListsRepository {
+  list(kind: ListKind, query: ListQuery<"name">): Promise<Page<ListItem>>
+  get(kind: ListKind, id: number): Promise<ListItem | null>
+  getMany(kind: ListKind, ids: readonly number[]): Promise<ListItem[]>
+  insert(kind: ListKind, name: string): Promise<ListItem>
+  update(kind: ListKind, id: number, name: string): Promise<ListItem | null>
+  delete(kind: ListKind, id: number): Promise<void>
+  /** Releases with the format or medium, or credits with the role */
+  uses(kind: ListKind, id: number): Promise<number>
+}
+
+export type CreditOwner = "release" | "track"
+
+export interface CreditsRepository {
+  /** Credits by release or track, in display order */
+  of(owner: CreditOwner, ids: readonly number[]): Promise<Map<number, Credit[]>>
+  set(
+    owner: CreditOwner,
+    id: number,
+    credits: { artistId: number; roleId: number }[]
+  ): Promise<void>
+}
+
+export interface StatsRepository {
+  totals(): Promise<{
+    releases: number
+    artists: number
+    tracks: number
+    labels: number
+    durationMs: number
+  }>
+}
+
+/** Every repository the catalog needs, and a way to use them in one transaction. */
+export interface CatalogStore {
+  artists: ArtistsRepository
+  labels: LabelsRepository
+  releases: ReleasesRepository
+  tracks: TracksRepository
+  lists: ListsRepository
+  credits: CreditsRepository
+  stats: StatsRepository
+  files: FilesRepository
+  fileLinks: FileLinksRepository
+  /** Runs `fn` in one transaction, with repositories bound to it. */
+  transaction<T>(fn: (store: CatalogStore) => Promise<T>): Promise<T>
+}

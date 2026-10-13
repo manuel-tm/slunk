@@ -10,6 +10,8 @@ extend type Query {
     type: FileType
     "Only files nothing uses yet."
     unused: Boolean
+    "Only files that aren't a track's audio yet, to create tracks from."
+    withoutTrack: Boolean
   ): FilePage!
   file(id: ID!): File
   fileCounts: FileCounts!
@@ -67,12 +69,6 @@ type FileCounts {
   total: Int!
   "Files nothing uses yet"
   unused: Int!
-}
-
-"A track, for now just what the files pages show of it."
-type Track {
-  id: ID!
-  title: String!
 }
 
 "Something that uses a file. It has no id of its own."

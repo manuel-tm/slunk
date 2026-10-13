@@ -1,0 +1,189 @@
+import {
+  type Insertable,
+  type Kysely,
+  type Selectable,
+  type Updateable,
+  sql,
+} from "kysely"
+import type {
+  Track,
+  TracksRepository,
+  TrackValues,
+} from "../slunk/catalog/repository.ts"
+import type { DB, Tracks } from "./db_types.ts"
+import { chunks, contains, groupBy } from "./helpers.ts"
+
+export function createTracksRepository(db: Kysely<DB>): TracksRepository {
+  return {
+    async list({ offset, limit, sort, descending, search, release }) {
+      let query = db.selectFrom("tracks")
+      if (search) query = query.where(contains("title", search))
+      if (release !== undefined) query = query.where("release_id", "=", release)
+      const { total } = await query
+        .select((eb) => eb.fn.countAll<number>().as("total"))
+        .executeTakeFirstOrThrow()
+      const direction = descending ? "desc" : "asc"
+      const rows = await query
+        .selectAll()
+        .$if(sort === "title", (q) =>
+          q.orderBy(sql`title collate nocase`, direction)
+        )
+        .orderBy("id", direction)
+        .limit(limit)
+        .offset(offset)
+        .execute()
+      return { items: rows.map(toTrack), total }
+    },
+
+    async get(id) {
+      const row = await db
+        .selectFrom("tracks")
+        .selectAll()
+        .where("id", "=", id)
+        .executeTakeFirst()
+      return row ? toTrack(row) : null
+    },
+
+    async getMany(ids) {
+      const found: Track[] = []
+      for (const chunk of chunks(ids)) {
+        const rows = await db
+          .selectFrom("tracks")
+          .selectAll()
+          .where("id", "in", chunk)
+          .execute()
+        found.push(...rows.map(toTrack))
+      }
+      return found
+    },
+
+    async ofFiles(fileIds) {
+      const found = new Map<number, Track>()
+      for (const chunk of chunks(fileIds)) {
+        const rows = await db
+          .selectFrom("tracks")
+          .selectAll()
+          .where("file_id", "in", chunk)
+          .execute()
+        for (const row of rows) found.set(row.file_id, toTrack(row))
+      }
+      return found
+    },
+
+    async ofReleases(releaseIds) {
+      const found: Track[] = []
+      for (const chunk of chunks(releaseIds)) {
+        const rows = await db
+          .selectFrom("tracks")
+          .selectAll()
+          .where("release_id", "in", chunk)
+          .orderBy("release_id")
+          .orderBy("cd_number")
+          .orderBy("track_number")
+          .execute()
+        found.push(...rows.map(toTrack))
+      }
+      return groupBy(
+        found,
+        (track) => track.releaseId,
+        (track) => track
+      )
+    },
+
+    async insert(values) {
+      const row = await db
+        .insertInto("tracks")
+        .values(toRow(values))
+        .returningAll()
+        .executeTakeFirstOrThrow()
+      return toTrack(row)
+    },
+
+    async update(id, values) {
+      const row = await db
+        .updateTable("tracks")
+        .set({ ...toRow(values), updated_at: sql`unixepoch()` })
+        .where("id", "=", id)
+        .returningAll()
+        .executeTakeFirst()
+      return row ? toTrack(row) : null
+    },
+
+    async delete(id) {
+      await db.deleteFrom("tracks").where("id", "=", id).execute()
+    },
+
+    async shiftNumbers(releaseId, by) {
+      await db
+        .updateTable("tracks")
+        .set({ track_number: sql`track_number + ${by}` })
+        .where("release_id", "=", releaseId)
+        .execute()
+    },
+
+    async artistsOf(trackIds) {
+      const rows: { trackId: number; artistId: number; featured: number }[] = []
+      for (const chunk of chunks(trackIds)) {
+        const found = await db
+          .selectFrom("artists_tracks")
+          .select(["track_id as trackId", "artist_id as artistId", "featured"])
+          .where("track_id", "in", chunk)
+          .orderBy("track_id")
+          .orderBy("position")
+          .execute()
+        rows.push(...found)
+      }
+      return groupBy(
+        rows,
+        (row) => row.trackId,
+        (row) => ({ artistId: row.artistId, featured: row.featured === 1 })
+      )
+    },
+
+    async setArtists(trackId, artists) {
+      await db
+        .deleteFrom("artists_tracks")
+        .where("track_id", "=", trackId)
+        .execute()
+      if (artists.length === 0) return
+      await db
+        .insertInto("artists_tracks")
+        .values(
+          artists.map(({ artistId, featured }, position) => ({
+            track_id: trackId,
+            artist_id: artistId,
+            featured: featured ? 1 : 0,
+            position,
+          }))
+        )
+        .execute()
+    },
+  }
+}
+
+function toTrack(row: Selectable<Tracks>): Track {
+  return {
+    id: row.id,
+    title: row.title,
+    durationMs: row.duration_ms,
+    trackNumber: row.track_number,
+    cdNumber: row.cd_number,
+    releaseId: row.release_id,
+    fileId: row.file_id,
+    insertedAt: row.inserted_at,
+    updatedAt: row.updated_at,
+  }
+}
+
+function toRow(values: TrackValues): Insertable<Tracks>
+function toRow(values: Partial<TrackValues>): Updateable<Tracks>
+function toRow(values: Partial<TrackValues>): Updateable<Tracks> {
+  return {
+    title: values.title,
+    duration_ms: values.durationMs,
+    track_number: values.trackNumber,
+    cd_number: values.cdNumber,
+    release_id: values.releaseId,
+    file_id: values.fileId,
+  }
+}

@@ -1,5 +1,6 @@
 import type { Kysely } from "kysely"
 import type { DB } from "../../repo/db_types.ts"
+import type { Catalog } from "../../slunk/catalog.ts"
 import type { Media } from "../../slunk/media.ts"
 import type { Loaders } from "./loaders.ts"
 
@@ -8,6 +9,7 @@ export type App = {
   db: Kysely<DB>
   dbPath: string
   media: Media
+  catalog: Catalog
 }
 
 /** What every resolver gets as its context: the app, and this request's loaders. */

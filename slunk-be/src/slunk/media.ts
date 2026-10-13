@@ -2,22 +2,29 @@
 // from. Slunk only reads the files; it records them in its database.
 import { fileTypeOf, type FileType } from "./media/file_types.ts"
 import type { Library } from "./media/library.ts"
+import { type ListArgs, pagingOf, searchOf, sortOf } from "./paging.ts"
+import { readAudio } from "./media/audio.ts"
 import type {
+  FileLinksRepository,
   FileRecord,
   FilesRepository,
   FileUse,
+  LinkOwner,
   NewFile,
 } from "./media/repository.ts"
 
 export type Media = ReturnType<typeof createMedia>
 
-const SORTS = ["id", "path"] as const
+/** Files read from disk and ready to insert, and those already registered. */
+export type PreparedFiles = { existing: FileRecord[]; fresh: NewFile[] }
 
 export function createMedia({
   files,
+  fileLinks,
   library,
 }: {
   files: FilesRepository
+  fileLinks: FileLinksRepository
   library: Library
 }) {
   /** Registered files at these paths, by path. */
@@ -37,44 +44,62 @@ export function createMedia({
     return files.hasPathStartingWith(`${folder}/`)
   }
 
+  /** Reads the files at these paths that aren't registered yet. Writes nothing. */
+  async function prepareFiles(paths: string[]): Promise<PreparedFiles> {
+    const wanted = [...new Set(paths.map(library.normalize))]
+    const known = await registered(wanted)
+    const fresh: NewFile[] = []
+    for (const path of wanted.filter((path) => !known.has(path))) {
+      if (path === "") throw new Error("That's a folder, not a file")
+      const facts = await library.readFacts(path)
+      fresh.push({ path, type: fileTypeOf(path), ...facts })
+    }
+    return { existing: [...known.values()], fresh }
+  }
+
+  /** Inserts prepared files, maybe in a transaction. Returns them all by path. */
+  async function insertPrepared(
+    store: { files: FilesRepository },
+    { existing, fresh }: PreparedFiles
+  ): Promise<Map<string, FileRecord>> {
+    const byPath = new Map(existing.map((file) => [file.path, file]))
+    for (const file of await store.files.insert(fresh))
+      byPath.set(file.path, file)
+    return byPath
+  }
+
   return {
-    /** A page of files. `sort` is a column, with `-` for descending. */
-    async listFiles({
-      page = 1,
-      perPage = 50,
-      sort = "-id",
-      q,
-      type,
-      unused,
-    }: {
-      page?: number
-      perPage?: number
-      sort?: string | null
-      q?: string | null
-      type?: FileType | null
-      unused?: boolean | null
-    }) {
-      const column = (sort ?? "-id").replace(/^-/, "")
-      if (!SORTS.includes(column as (typeof SORTS)[number])) {
-        throw new Error(`Files can't be sorted by ${column}`)
+    normalizePath: (path: string) => library.normalize(path),
+    prepareFiles,
+    insertPrepared,
+    filesByIds: (ids: readonly number[]) => files.getMany(ids),
+    fileLinksOf: (owner: LinkOwner, ids: readonly number[]) =>
+      fileLinks.of(owner, ids),
+    /** An audio file's duration and embedded tags. */
+    readAudio: (file: FileRecord) => readAudio(library.absolute(file.path)),
+    readAudioAt: (path: string) => readAudio(library.absolute(path)),
+
+    /** A page of files. */
+    listFiles(
+      args: ListArgs & {
+        type?: FileType | null
+        unused?: boolean | null
+        withoutTrack?: boolean | null
       }
-      if (!Number.isInteger(page) || page < 1) throw new Error("No such page")
-      perPage = Math.min(Math.max(perPage, 1), 200)
+    ) {
       return files.list({
-        offset: (page - 1) * perPage,
-        limit: perPage,
-        sort: column as (typeof SORTS)[number],
-        descending: (sort ?? "-id").startsWith("-"),
-        search: q?.trim() || undefined,
-        type: type ?? undefined,
-        unused: unused ?? undefined,
+        ...pagingOf(args),
+        ...sortOf(args.sort, ["path"] as const, "Files"),
+        search: searchOf(args.q),
+        type: args.type ?? undefined,
+        unused: args.unused ?? undefined,
+        withoutTrack: args.withoutTrack ?? undefined,
       })
     },
 
     getFile: (id: number) => files.get(id),
     fileCounts: () => files.counts(),
     fileUses: (id: number): Promise<FileUse[]> => files.uses(id),
-    tracksOfFiles: (ids: number[]) => files.tracksOf(ids),
     fileOnDisk: (file: FileRecord) => library.exists(file.path),
     absolutePath: (file: FileRecord) => library.absolute(file.path),
 
@@ -112,16 +137,10 @@ export function createMedia({
      * them by extension. Paths already registered are returned as they are.
      */
     async registerFiles(paths: string[]): Promise<FileRecord[]> {
-      const wanted = [...new Set(paths.map(library.normalize))]
-      const known = await registered(wanted)
-      const added: NewFile[] = []
-      for (const path of wanted.filter((path) => !known.has(path))) {
-        if (path === "") throw new Error("That's a folder, not a file")
-        const facts = await library.readFacts(path)
-        added.push({ path, type: fileTypeOf(path), ...facts })
-      }
-      for (const file of await files.insert(added)) known.set(file.path, file)
-      return wanted.map((path) => known.get(path)!)
+      const byPath = await insertPrepared({ files }, await prepareFiles(paths))
+      return [...new Set(paths.map(library.normalize))].map((path) =>
+        byPath.get(path)!
+      )
     },
 
     /**

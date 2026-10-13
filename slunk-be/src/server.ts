@@ -1,7 +1,8 @@
 import { databasePath, port } from "./config.ts"
 import { openDb } from "./repo/db.ts"
-import { createFilesRepository } from "./repo/files_repository.ts"
 import { migrate } from "./repo/migrator.ts"
+import { createStore } from "./repo/store.ts"
+import { createCatalog } from "./slunk/catalog.ts"
 import { createMedia } from "./slunk/media.ts"
 import { createLibrary } from "./slunk/media/library.ts"
 import { startEndpoint } from "./slunk_web/endpoint.ts"
@@ -15,11 +16,14 @@ for (const name of names) console.log(`Applied migration ${name}`)
 
 // Wires each context to its SQLite repositories (design §6)
 const db = openDb(dbPath)
+const store = createStore(db)
 const media = createMedia({
-  files: createFilesRepository(db),
+  files: store.files,
+  fileLinks: store.fileLinks,
   library: createLibrary(dbPath),
 })
-await startEndpoint({ db, dbPath, media }, port())
+const catalog = createCatalog({ store, media })
+await startEndpoint({ db, dbPath, media, catalog }, port())
 console.log(`Slunk is serving ${dbPath} at http://127.0.0.1:${port()}/graphql`)
 
 // Closing the database checkpoints the WAL and removes the -wal/-shm files

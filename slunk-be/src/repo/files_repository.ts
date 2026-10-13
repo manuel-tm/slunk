@@ -4,8 +4,8 @@ import type {
   FilesRepository,
   FileUse,
   NewFile,
-  TrackRef,
 } from "../slunk/media/repository.ts"
+import { likePattern } from "../slunk/paging.ts"
 import type { DB, Files } from "./db_types.ts"
 
 /** Matches files nothing uses: the uses that block a delete (design §4.3). */
@@ -24,14 +24,28 @@ const CHUNK = 500
 
 export function createFilesRepository(db: Kysely<DB>): FilesRepository {
   return {
-    async list({ offset, limit, sort, descending, search, type, unused }) {
+    async list({
+      offset,
+      limit,
+      sort,
+      descending,
+      search,
+      type,
+      unused,
+      withoutTrack,
+    }) {
       let query = db.selectFrom("files")
       if (search) {
-        const pattern = `%${search.replace(/[\\%_]/g, "\\$&")}%`
+        const pattern = likePattern(search)
         query = query.where(sql<boolean>`path like ${pattern} escape '\\'`)
       }
       if (type) query = query.where("type", "=", type)
       if (unused) query = query.where(UNUSED)
+      if (withoutTrack) {
+        query = query.where(
+          sql<boolean>`not exists (select 1 from tracks where file_id = files.id)`
+        )
+      }
 
       const { total } = await query
         .select((eb) => eb.fn.countAll<number>().as("total"))
@@ -52,6 +66,19 @@ export function createFilesRepository(db: Kysely<DB>): FilesRepository {
         .where("id", "=", id)
         .executeTakeFirst()
       return row ? toRecord(row) : null
+    },
+
+    async getMany(ids) {
+      const found: FileRecord[] = []
+      for (let i = 0; i < ids.length; i += CHUNK) {
+        const rows = await db
+          .selectFrom("files")
+          .selectAll()
+          .where("id", "in", ids.slice(i, i + CHUNK))
+          .execute()
+        found.push(...rows.map(toRecord))
+      }
+      return found
     },
 
     async findByPaths(paths) {
@@ -126,21 +153,6 @@ export function createFilesRepository(db: Kysely<DB>): FilesRepository {
         from files
       `.execute(db)
       return rows[0]
-    },
-
-    async tracksOf(fileIds) {
-      const tracks = new Map<number, TrackRef>()
-      for (let i = 0; i < fileIds.length; i += CHUNK) {
-        const rows = await db
-          .selectFrom("tracks")
-          .select(["id", "title", "file_id"])
-          .where("file_id", "in", fileIds.slice(i, i + CHUNK))
-          .execute()
-        for (const { id, title, file_id } of rows) {
-          tracks.set(file_id, { id, title })
-        }
-      }
-      return tracks
     },
 
     async hasPathStartingWith(prefix, negate = false) {

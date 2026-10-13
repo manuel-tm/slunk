@@ -1,5 +1,6 @@
 import { readdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
+import { catalogResolvers } from "./catalog.ts"
 import { healthResolvers } from "./health.ts"
 import { mediaResolvers } from "./media.ts"
 
@@ -9,4 +10,4 @@ export const typeDefs = readdirSync(import.meta.dirname)
   .sort()
   .map((file) => readFileSync(join(import.meta.dirname, file), "utf8"))
 
-export const resolvers = [healthResolvers, mediaResolvers]
+export const resolvers = [healthResolvers, mediaResolvers, catalogResolvers]
