@@ -2,8 +2,9 @@ import type {
   FileLinksRepository,
   FilesRepository,
 } from "../media/repository.ts"
-import type { Paging } from "../paging.ts"
-import type { DatePrecision } from "./dates.ts"
+import type { ListQuery, Page } from "../paging.ts"
+import type { DatePrecision } from "../dates.ts"
+import type { TagFilter } from "../tagging/repository.ts"
 
 export type Artist = {
   id: number
@@ -63,14 +64,6 @@ export type ArtistCredit = {
 
 export type FormatCount = { formatId: number; count: number }
 
-export type Page<T> = { items: T[]; total: number }
-
-export type ListQuery<Sort extends string> = Paging & {
-  sort: Sort | "id"
-  descending: boolean
-  search?: string
-}
-
 export type NamedValues = { name: string; picture: number | null }
 
 /** Artists and labels: named entities with a picture. */
@@ -106,6 +99,8 @@ export type ReleaseQuery = ListQuery<"title" | "released"> & {
   medium?: number
   label?: number
   artist?: number
+  /** Every filter has to match */
+  tags?: TagFilter[]
 }
 
 export type ReleaseValues = Omit<Release, "id" | "insertedAt" | "updatedAt">

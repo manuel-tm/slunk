@@ -20,6 +20,7 @@ import {
   ImportFolder,
   ImportNewRelease,
   ImportRelease,
+  ImportTags,
   ImportTracks,
 } from "@/routes/import/steps"
 import { LabelForm } from "@/routes/labels/form"
@@ -34,6 +35,9 @@ import { ReleaseCreate, ReleaseEdit } from "@/routes/releases/edit"
 import { ReleaseFiles } from "@/routes/releases/files"
 import { ReleaseList } from "@/routes/releases/list"
 import { ReleasePage } from "@/routes/releases/page"
+import { TagForm } from "@/routes/tags/form"
+import { TagList } from "@/routes/tags/list"
+import { TagRead } from "@/routes/tags/read"
 import { TrackForm } from "@/routes/tracks/form"
 import { TrackList } from "@/routes/tracks/list"
 import { TrackRead } from "@/routes/tracks/read"
@@ -67,6 +71,7 @@ export const router = createBrowserRouter([
             path: ":id/update/credits",
             element: <ReleaseEdit tab="credits" />,
           },
+          { path: ":id/update/tags", element: <ReleaseEdit tab="tags" /> },
         ],
       },
       {
@@ -99,6 +104,15 @@ export const router = createBrowserRouter([
           { path: ":id/update", element: <LabelForm /> },
         ],
       },
+      {
+        path: "tags",
+        children: [
+          { index: true, element: <TagList /> },
+          { path: "create", element: <TagForm /> },
+          { path: ":type/:id", element: <TagRead /> },
+          { path: ":type/:id/update", element: <TagForm /> },
+        ],
+      },
       ...Object.values(LISTS).map(({ kind, path }) => ({
         path: path.slice(1),
         children: [
@@ -117,6 +131,7 @@ export const router = createBrowserRouter([
           { path: ":id/tracks", element: <ImportTracks /> },
           { path: ":id/files", element: <ImportFiles /> },
           { path: ":id/credits", element: <ImportCredits /> },
+          { path: ":id/tags", element: <ImportTags /> },
         ],
       },
       { path: "*", element: <NotFound /> },

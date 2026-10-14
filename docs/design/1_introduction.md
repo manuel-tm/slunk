@@ -114,7 +114,7 @@ The app's connection sets `foreign_keys = ON`, `journal_mode = WAL` and `busy_ti
 
 ### 4.3 Design decisions
 
-> Changed during implementation, see [Appendix A](#appendix-a-more-integrity-rules-in-the-database).
+> Changed during implementation, see [Appendix A](#appendix-a-more-integrity-rules-in-the-database) and [Appendix D](#appendix-d-tag-values-are-checked-in-the-database).
 
 **Files.**
 - `path` is relative, as described in §4.1.
@@ -434,7 +434,7 @@ erDiagram
 
 #### Constraints & indexes
 
-> Changed during implementation, see [Appendix A](#appendix-a-more-integrity-rules-in-the-database).
+> Changed during implementation, see [Appendix A](#appendix-a-more-integrity-rules-in-the-database) and [Appendix D](#appendix-d-tag-values-are-checked-in-the-database).
 
 Every table is `STRICT`.
 
@@ -970,7 +970,7 @@ What this means for the user:
 
 ## 8. Phases
 
-> Changed during implementation, see [Appendix C](#appendix-c-file-bytes-are-served-under-raw).
+> Changed during implementation, see [Appendix C](#appendix-c-file-bytes-are-served-under-raw) and [Appendix D](#appendix-d-tag-values-are-checked-in-the-database).
 
 Each phase is a vertical slice (migration if needed → repository → context → GraphQL → UI) and ends with something usable. A phase's UI is the routes marked with it in the route map (§7.4).
 
@@ -1067,3 +1067,19 @@ Files come before Catalog because every track is created from a registered audio
 - **Was:** the backend serves a file's bytes at `GET /files/:id`, and Vite proxies `/graphql` and `/files` to the backend.
 - **Now:** the bytes are at `GET /raw/files/:id`, and Vite proxies `/graphql` and `/raw`.
 - **Why:** `/files/:id` is also the frontend's read page for a file (§7.4). Proxying `/files` sent every page under it to the backend: loading or refreshing `/files?unused=1` got a 404, and `/files/12` returned the file instead of its page. Only navigating inside the app worked. No frontend route starts with `/raw`, so the two can't collide.
+
+## Appendix D: Tag values are checked in the database
+
+- **Date:** 2026-10-13
+- **Affects:** §4.3 Dates; §4.4 Constraints & indexes (`release_date_tags`, `release_real_number_tags`); §8 Phase 4 (track tags)
+- **Was:** date tag values follow the first-day rule, but nothing checked it, and a number tag's value could be any `REAL`. §8 expected track tags, in phase 4, to be the first migration after the baseline.
+- **Now:** phase 3 adds the migration `20261013060918_add_tag_value_rules`. Its triggers check each new or changed `value`:
+  - `release_date_tags.value` is a day at midnight UTC (`value % 86400 = 0`), or the write fails with "a date tag's value must be a day, at midnight UTC".
+  - `release_real_number_tags.value` is finite, or the write fails with "a number tag's value must be finite". SQLite stores infinity in a `REAL` column. NaN already becomes NULL, which `NOT NULL` rejects.
+
+  Triggers only check new writes, so the migration fails if rows already break either rule. Track tags are still phase 4's: they'll be the second migration, and still show that the system extends.
+- **Why:** both rules can be expressed in SQLite, so the database enforces them, as in Appendix A:
+  - A date tag value at noon wouldn't match a filter for its own day, since filters compare midnights.
+  - JSON has no infinity, so GraphQL would fail on any page that showed one.
+
+  They're triggers rather than CHECKs because adding a CHECK means rebuilding both tables (§5.3), while triggers are added and dropped in place.

@@ -29,11 +29,36 @@ export function useListParams() {
     )
   }
 
+  /**
+   * Adds parameters, keeping those with the same name, for filters that can
+   * repeat (`text.3=Pop&text.3=Rock`). Goes back to page 1.
+   */
+  function append(entries: [string, string][]) {
+    setParams((current) => {
+      const next = new URLSearchParams(current)
+      next.delete("page")
+      for (const [key, value] of entries) next.append(key, value)
+      return next
+    })
+  }
+
+  /** Removes one value of a parameter that can repeat. Goes back to page 1. */
+  function remove(key: string, value: string) {
+    setParams((current) => {
+      const next = new URLSearchParams(current)
+      next.delete("page")
+      next.delete(key, value)
+      return next
+    })
+  }
+
   return {
     params,
     page: Math.max(1, Number(params.get("page")) || 1),
     sort: params.get("sort"),
     q: params.get("q") ?? "",
     update,
+    append,
+    remove,
   }
 }

@@ -5,6 +5,7 @@ import { createStore } from "./repo/store.ts"
 import { createCatalog } from "./slunk/catalog.ts"
 import { createMedia } from "./slunk/media.ts"
 import { createLibrary } from "./slunk/media/library.ts"
+import { createTagging } from "./slunk/tagging.ts"
 import { startEndpoint } from "./slunk_web/endpoint.ts"
 
 const dbPath = databasePath()
@@ -23,7 +24,8 @@ const media = createMedia({
   library: createLibrary(dbPath),
 })
 const catalog = createCatalog({ store, media })
-await startEndpoint({ db, dbPath, media, catalog }, port())
+const tagging = createTagging({ store })
+await startEndpoint({ db, dbPath, media, catalog, tagging }, port())
 console.log(`Slunk is serving ${dbPath} at http://127.0.0.1:${port()}/graphql`)
 
 // Closing the database checkpoints the WAL and removes the -wal/-shm files

@@ -15,6 +15,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { graphql } from "@/gql"
 import type { ReleaseQuery } from "@/gql/graphql"
 import { formatDuration, formatReleased } from "@/lib/format"
+import { formatTagValue, tagValueUrl } from "@/lib/tags"
 import { NotFound } from "@/routes/not-found"
 
 const ReleaseQueryDocument = graphql(`
@@ -56,6 +57,14 @@ const ReleaseQueryDocument = graphql(`
           id
           name
         }
+      }
+      tags {
+        tag {
+          id
+          type
+          name
+        }
+        values
       }
       tracks {
         id
@@ -133,7 +142,7 @@ export function ReleasePage() {
             <DeleteButton
               name={release.title}
               blockers={release.blockers}
-              detail="Its artists, labels, formats, media, credits and file links go with it. Its files stay registered."
+              detail="Its artists, labels, formats, media, credits, tags and file links go with it. Its files stay registered."
               onDelete={() => deleteRelease()}
               then="/releases"
             />
@@ -175,7 +184,7 @@ function Heading({ release }: { release: Release }) {
       </span>
     ))
 
-  // A row with nothing in it is hidden
+  // A row with nothing in it is hidden. Tags come last, a row each.
   const facts: [string, ReactNode][] = [
     [
       "Label",
@@ -192,6 +201,20 @@ function Heading({ release }: { release: Release }) {
     ],
     ["Media", release.media.length > 0 && filterLinks(release.media, "medium")],
     ["Released", formatReleased(release.released)],
+    ...release.tags.map(({ tag, values }): [string, ReactNode] => [
+      tag.name,
+      values.map((value, index) => (
+        <span key={value}>
+          {index > 0 && ", "}
+          <Link
+            to={tagValueUrl(tag.type, tag.id, value)}
+            className="hover:underline"
+          >
+            {formatTagValue(tag.type, value)}
+          </Link>
+        </span>
+      )),
+    ]),
   ]
 
   return (
@@ -215,11 +238,12 @@ function Heading({ release }: { release: Release }) {
           )}
           {release.title}
         </h1>
-        <dl className="grid grid-cols-[5rem_1fr] gap-y-1">
+        <dl className="grid grid-cols-[minmax(5rem,auto)_1fr] gap-x-2 gap-y-1">
           {facts
             .filter(([, value]) => value)
-            .map(([label, value]) => (
-              <div key={label} className="contents">
+            .map(([label, value], index) => (
+              // Labels can repeat, since a tag can be named "Format"
+              <div key={index} className="contents">
                 <dt className="text-muted-foreground">{label}:</dt>
                 <dd>{value}</dd>
               </div>

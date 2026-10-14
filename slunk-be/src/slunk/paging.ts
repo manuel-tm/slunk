@@ -10,6 +10,15 @@ export type ListArgs = {
 
 export type Paging = { offset: number; limit: number }
 
+export type Page<T> = { items: T[]; total: number }
+
+/** What a repository's list takes, once the arguments are checked. */
+export type ListQuery<Sort extends string> = Paging & {
+  sort: Sort | "id"
+  descending: boolean
+  search?: string
+}
+
 /** The rows a page covers. Pages hold at most 200 rows. */
 export function pagingOf({ page, perPage }: ListArgs): Paging {
   page ??= 1

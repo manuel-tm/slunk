@@ -2,7 +2,14 @@
 
 > Keep this page up to date: any migration that changes the schema updates it in the same change.
 
-This is the schema as built. The baseline migration, `slunk-be/priv/repo/migrations/20261011141955_create_baseline.ts`, creates all of it. The reasoning behind it is in [design §4](../design/1_introduction.md#4-data-model) and its [Appendix A](../design/1_introduction.md#appendix-a-more-integrity-rules-in-the-database). Every column's type is in `slunk-be/src/repo/db_types.ts`, which is generated from the database.
+This is the schema as built, by these migrations in `slunk-be/priv/repo/migrations/`:
+
+| Migration | Adds |
+|---|---|
+| `20261011141955_create_baseline` | Every table, index and trigger, except those below |
+| `20261013060918_add_tag_value_rules` | The triggers that check date and number tag values |
+
+The reasoning behind it is in [design §4](../design/1_introduction.md#4-data-model), and its appendices [A](../design/1_introduction.md#appendix-a-more-integrity-rules-in-the-database) and [D](../design/1_introduction.md#appendix-d-tag-values-are-checked-in-the-database). Every column's type is in `slunk-be/src/repo/db_types.ts`, which is generated from the database.
 
 How to connect, migrate and seed: [development/backend.md](../development/backend.md#the-database).
 
@@ -65,7 +72,9 @@ How to connect, migrate and seed: [development/backend.md](../development/backen
   - `file_id` is unique: a file is the audio of at most one track;
   - `track_number > 0`, `cd_number > 0`, `duration_ms >= 0`.
 - **Links:** an artist, label, format, medium or file appears at most once per release or track. A credit (release or track, artist, role) appears once. `position >= 0`.
-- **Tag values:** `(release_id, tag_id, value)` is unique.
+- **Tag values:**
+  - `(release_id, tag_id, value)` is unique;
+  - a date tag's value is a day, at midnight UTC, and a number tag's value is finite (triggers below).
 - **Flags:** `various_artists`, `featured` and `multiple` are 0 or 1.
 
 ### Triggers
@@ -82,6 +91,8 @@ Each trigger aborts the statement with the error shown.
 | `artists_picture_is_image_insert`, `…_update` | `an artist picture must be an image` | `picture` points to a file that isn't an `image` |
 | `labels_picture_is_image_insert`, `…_update` | `a label picture must be an image` | `picture` points to a file that isn't an `image` |
 | `files_type_stays_image` | `a cover or picture must stay an image` | A file used as a cover or picture changes `type` |
+| `release_date_tags_value_is_day_insert`, `…_update` | `a date tag's value must be a day, at midnight UTC` | `value % 86400 <> 0`, on insert or on changing `value` |
+| `release_real_number_tags_value_is_finite_insert`, `…_update` | `a number tag's value must be finite` | `value` is infinite, on insert or on changing `value`. NaN is already NULL, which `NOT NULL` rejects. |
 
 `<type>` is `text`, `real_number` or `date`.
 
@@ -110,6 +121,6 @@ The baseline migration adds these rows. Nothing depends on them, so the user can
 
 ## Left to the app
 
-- A tag name used by another type ("Score" as both a text and a real number tag) is allowed by the database.
+- A tag name used by another type ("Score" as both a text and a real number tag) is allowed by the database. The app refuses it, ignoring case.
 - Paths are only checked to be non-empty and relative. Normalizing them (forward slashes, no `./` or `a/../b`) is up to the app.
 - `updated_at` isn't updated automatically.

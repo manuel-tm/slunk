@@ -1,13 +1,14 @@
 import {
   AlbumIcon,
   AudioLinesIcon,
+  CassetteTapeIcon,
   DiscIcon,
   FilesIcon,
   FolderInputIcon,
+  LayersIcon,
   LayoutDashboardIcon,
   type LucideIcon,
   MicVocalIcon,
-  TagIcon,
   TagsIcon,
   UsersIcon,
 } from "lucide-react"
@@ -40,8 +41,9 @@ const sections: Section[] = [
 
 // The lists the user manages
 const lists: Section[] = [
-  { title: "Release formats", to: "/release-formats", icon: TagIcon },
-  { title: "Release media", to: "/release-media", icon: TagsIcon },
+  { title: "Tags", to: "/tags", icon: TagsIcon },
+  { title: "Release formats", to: "/release-formats", icon: LayersIcon },
+  { title: "Release media", to: "/release-media", icon: CassetteTapeIcon },
   { title: "Credit roles", to: "/credit-roles", icon: MicVocalIcon },
 ]
 

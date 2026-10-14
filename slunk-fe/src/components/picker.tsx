@@ -14,9 +14,9 @@ export type Option = { id: string; name: string }
 
 const CREATE = "__create__"
 
-export type PickerProps = {
-  value: Option | null
-  onChange: (option: Option | null) => void
+export type PickerProps<T extends Option = Option> = {
+  value: T | null
+  onChange: (option: T | null) => void
   /** Ids to leave out, like those already in a list */
   exclude?: string[]
   placeholder?: string
@@ -28,7 +28,7 @@ export type PickerProps = {
  * A combobox whose options come from the backend as the user types (design
  * §7.2). With `onCreate`, it also offers to create what was typed.
  */
-export function Picker({
+export function Picker<T extends Option>({
   value,
   onChange,
   exclude = [],
@@ -40,13 +40,16 @@ export function Picker({
   query,
   noun,
   onCreate,
-}: PickerProps & {
-  options: Option[]
+  createLabel = (typed) => `Create ${noun} "${typed}"`,
+}: PickerProps<T> & {
+  options: T[]
   query: string
   onQuery: (query: string) => void
   /** "artist", for "No artist found" and "Create artist …" */
   noun: string
-  onCreate?: (name: string) => Promise<Option>
+  /** Null when creating was cancelled */
+  onCreate?: (name: string) => Promise<T | null>
+  createLabel?: (typed: string) => string
 }) {
   const [creating, setCreating] = useState(false)
   const typed = query.trim()
@@ -55,11 +58,11 @@ export function Picker({
     (option) => option.name.toLowerCase() === typed.toLowerCase()
   )
   if (onCreate && typed && !exact) {
-    items.push({ id: CREATE, name: `Create ${noun} "${typed}"` })
+    items.push({ id: CREATE, name: createLabel(typed) } as T)
   }
 
   return (
-    <Combobox<Option>
+    <Combobox<T>
       items={items}
       filter={null}
       value={value}
@@ -74,7 +77,8 @@ export function Picker({
         }
         setCreating(true)
         try {
-          onChange(await onCreate!(typed))
+          const created = await onCreate!(typed)
+          if (created) onChange(created)
         } finally {
           setCreating(false)
         }
@@ -89,7 +93,7 @@ export function Picker({
       <ComboboxContent>
         <ComboboxEmpty>No {noun} found</ComboboxEmpty>
         <ComboboxList>
-          {(option: Option) => (
+          {(option: T) => (
             <ComboboxItem key={option.id} value={option}>
               {option.name}
             </ComboboxItem>

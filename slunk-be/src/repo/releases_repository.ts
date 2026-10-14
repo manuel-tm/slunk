@@ -14,6 +14,7 @@ import type {
 } from "../slunk/catalog/repository.ts"
 import type { DB, Releases } from "./db_types.ts"
 import { chunks, contains, groupBy } from "./helpers.ts"
+import { tagMatches } from "./tags_repository.ts"
 
 /** Each link's table, its column, and how its rows are ordered. */
 const LINKS = {
@@ -44,6 +45,9 @@ export function createReleasesRepository(db: Kysely<DB>): ReleasesRepository {
         ["artists", query.artist],
       ] as const) {
         if (id !== undefined) select = select.where(linkedTo(link, id))
+      }
+      for (const filter of query.tags ?? []) {
+        select = select.where(tagMatches(filter))
       }
 
       const { total } = await select

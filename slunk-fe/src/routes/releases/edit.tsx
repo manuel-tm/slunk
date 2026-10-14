@@ -14,6 +14,7 @@ import {
 } from "@/routes/releases/forms/details"
 import { ReleaseCreditsForm } from "@/routes/releases/forms/credits"
 import { ReleaseFilesForm } from "@/routes/releases/forms/files"
+import { ReleaseTagsForm } from "@/routes/releases/forms/tags"
 import { ReleaseTracksForm } from "@/routes/releases/forms/tracks"
 
 const ReleaseTitleQuery = graphql(`
@@ -53,7 +54,7 @@ const ReleaseDetailsQuery = graphql(`
   }
 `)
 
-export type EditTab = "details" | "tracks" | "files" | "credits"
+export type EditTab = "details" | "tracks" | "files" | "credits" | "tags"
 
 /**
  * `/releases/:id/update/…` (design §7.6): editing split into tabs in the
@@ -91,6 +92,7 @@ export function ReleaseEdit({ tab }: { tab: EditTab }) {
             { label: "Tracks", to: `${base}/tracks` },
             { label: "Files", to: `${base}/files` },
             { label: "Credits", to: `${base}/credits` },
+            { label: "Tags", to: `${base}/tags` },
           ]}
         />
       </PageHeader>
@@ -103,6 +105,7 @@ export function ReleaseEdit({ tab }: { tab: EditTab }) {
         {tab === "credits" && (
           <ReleaseCreditsForm releaseId={id} onSaved={saved} />
         )}
+        {tab === "tags" && <ReleaseTagsForm releaseId={id} onSaved={saved} />}
       </div>
     </>
   )

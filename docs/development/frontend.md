@@ -2,11 +2,12 @@
 
 > Keep this page up to date: any change to the frontend's stack, structure or conventions updates it in the same change.
 
-The frontend has phases 0 to 2:
+The frontend has phases 0 to 3:
 - the app shell (sidebar with the Import button, page header) and a "not found" page;
 - the dashboard: the backend's status, the catalog's totals, and the newest releases;
 - the files pages: list, register, read and update;
 - the catalog's pages: releases (with the release page and its edit tabs), artists (with their tabs), tracks, labels, release formats, release media and credit roles;
+- tags: their definitions' pages, a release's Tags tab, its tags on the release page, and tag filters on the release list;
 - the import: a release built from a folder, step by step.
 
 ## Stack
@@ -44,11 +45,12 @@ slunk-fe/
       files/               /files: list, create (register), read, update
       releases/
         list.tsx           /releases
+        tag-filters.tsx    the release list's tag filters
         page.tsx           /releases/:id, the release page
         files.tsx          /releases/:id/files
         edit.tsx           /releases/create, and the edit tabs' frame
-        forms/             details, tracks, files and credits: the edit tabs'
-                           forms, which the import's steps reuse
+        forms/             details, tracks, files, credits and tags: the edit
+                           tabs' forms, which the import's steps reuse
       artists/
         list.tsx, form.tsx /artists, create and update
         page.tsx           /artists/:id and its other tabs
@@ -56,6 +58,7 @@ slunk-fe/
       labels/              /labels: list, read, form
       lists/               /release-formats, /release-media and
                            /credit-roles: one set of pages, by kind
+      tags/                /tags: list, read, form
       import/steps.tsx     /import and its steps
     components/
       app-layout.tsx       the app shell: sidebar, and the page beside it
@@ -72,6 +75,8 @@ slunk-fe/
       chip-list.tsx        a compact picked list, for table rows
       credits-editor.tsx   credits as rows of role and artist
       file-links-editor.tsx  file links, each with a note
+      tag-fields.tsx       a tag definition's fields, and the new-tag dialog
+      tag-value-input.tsx  a tag value, suggesting a text tag's values
       release-table.tsx    the release table, with a column set per page
       names.tsx            names that link to their pages: "A, B & C"
       credit-lines.tsx     credits as "Producer – A, B", a line per role
@@ -87,8 +92,9 @@ slunk-fe/
       use-debounced.ts     a value once it stops changing, for searches
       use-mobile.ts        useIsMobile(), used by the sidebar
     lib/
-      apollo.ts            the Apollo client
+      apollo.ts            the Apollo client, and its cache's type policies
       format.ts            sizes, durations, dates, release dates, roles
+      tags.ts              tag types, values, and the list's tag filters
       utils.ts             cn() helper
 ```
 
@@ -113,15 +119,17 @@ slunk-fe/
 - **Types:** `npm run codegen` generates `src/gql/` from the backend's schema (`../slunk-be/src/slunk_web/schema/*.graphql`) and the `graphql()` calls in `src/`, so `graphql()` returns a typed document. Run it after writing a query, or after the backend's schema changes. The generated files are committed, and lint and Prettier skip them.
   - `graphql()` finds its types by the document's exact text, and Prettier may reformat a document. So run `npm run format` first, then `npm run codegen`.
   - Pieces several queries share are fragments, like `ArtistHeader`, spread with `...ArtistHeader`. Fragment masking is off, so their fields are on the query's data directly.
+  - The types only have `__typename` when the query asks for it. To tell an interface's types apart, like a `TextTag` among tags, select `__typename` and compare it.
 - **One query per route:** a page that needs a related name, like the release whose tracks a list filters on, asks for it in the same query, with `@include(if: …)`. The release edit tabs' header reads the release's title from the cache (`fetchPolicy: "cache-only"`), since each tab's own query fetched it.
 - **Freshness:** queries use `cache-and-network`, set as the client's default. A page shows what's cached at once and asks the backend again, so a list never shows what was there before a change. After a delete, the page also evicts the deleted object from the cache.
+- **Lists on cached objects,** like a release's tags, credits or artists, are always returned whole, so a new one replaces the cached one. `apollo.ts` marks them with `merge: false`. Without it, Apollo still replaces the list, but warns in the console when it gets shorter. A new list field on `Release`, `Track` or `Artist` goes there too.
 - **Mutations** reject when they fail, so callers wrap them in `try`. The page shows the error with `QueryError`, from the hook's `error`, and stays where it is.
 - **The backend:** the Apollo client sends requests to `/graphql`. Files are at `/raw/files/:id`, for `<img>`, `<audio>` and "Open the file". In development, Vite proxies `/graphql` and `/raw` to the backend at `127.0.0.1:4000`, and so does `vite preview`. Nothing else is proxied, so `/files/12` is always the app's page.
 
 ### Lists
 
 Lists follow design §7.2:
-- **State:** `useListParams()` keeps a list's state in the query string: `page`, `sort`, `q` and filters such as `?type=` and `?unused=1`. Changing anything but the page goes back to page 1. Typing in the search box replaces the history entry instead of adding one.
+- **State:** `useListParams()` keeps a list's state in the query string: `page`, `sort`, `q` and filters such as `?type=` and `?unused=1`. Changing anything but the page goes back to page 1. Typing in the search box replaces the history entry instead of adding one. Filters that can repeat, like tag filters, are added with `append` and removed one value at a time with `remove`.
 - **Controls** (`components/list/`):
   - `Pager`: "1–50 of 172", with previous and next.
   - `SearchBox`: searches after a pause in typing.
@@ -129,15 +137,20 @@ Lists follow design §7.2:
 - **Size:** lists ask for 50 rows a page.
 - **Frame:** `ListLayout` is a list page's frame: the header and its New button, the search box, filters, the pager, then the table, or what's there while it loads, fails or is empty.
 - **The release table** (`ReleaseTable`) is shared by the release list and the label and artist pages, each with its own columns (design §7.6).
+- **The tags list** (`/tags`) is the exception to the frame: it shows a table per type (design §7.8), each with every tag of that type, up to 200, and a note to search when there are more. The search box and the name sort apply to all three.
 
 ### Forms
 
 - **One form** serves both create and update, built from shadcn `field`s. It loads first, then renders a form component that keeps the values in state, starting from what loaded.
 - **Labels:** every control has one. A `Select` gets an `id` on its `SelectTrigger`, which the `FieldLabel`'s `htmlFor` points at.
 - **Saving** goes to the read page. When a save fails, the form stays and shows the backend's reason, which is often the database's own message (a CHECK or a trigger).
-- **Pickers** (design §7.2): artists, labels, formats, media, credit roles, releases and files are chosen with the pickers in `pickers.tsx`, each a `Picker` that searches the backend as the user types and offers the first 20 matches. Except for files and releases, a picker also offers to create what was typed ("Create artist 'Robbie Nevil'"). Each picker owns its query, so its results stay typed.
+- **Pickers** (design §7.2): artists, labels, formats, media, credit roles, releases, files and tags are chosen with the pickers in `pickers.tsx`, each a `Picker` that searches the backend as the user types and offers the first 20 matches. Except for files and releases, a picker also offers to create what was typed ("Create artist 'Robbie Nevil'"). Each picker owns its query, so its results stay typed.
+  - `Picker` is generic over its option type, so an option can carry more than an id and a name. A `TagOption` also has the tag's type, its id within the type, and whether it's multiple. Its `id` is `type:id`, since ids repeat across types.
+  - `TagPicker` with `creatable` asks for the rest of a new tag in a dialog (`NewTagDialog`): its type, and single or multiple. Cancelling it creates nothing, since `onCreate` can return null.
+  - `TagValuePicker` adds a value to a multi-value text tag: one that other releases already have, the most used first, or what was typed ("Add 'Funk'"). A single text value (`TagValueInput`) suggests the same values through a `<datalist>`.
 - **Ordered lists** (release artists, labels, formats, media, a track's artists and features) use `OrderedList`, whose order sets `position`. A track row uses the compact `ChipList`. Credits use `CreditsEditor`, and file links `FileLinksEditor`.
 - **The release forms** in `routes/releases/forms/` each take a release id and an `onSaved`, so the edit tabs and the import's steps use the same ones (design §7.6).
+- **A dialog with its own form,** like `NewTagDialog`, calls `stopPropagation()` on submit. The dialog is portaled out of the page's form in the DOM, but React still bubbles the submit event to it, which would save the page's form too.
 
 ### Deleting
 
@@ -152,9 +165,28 @@ Delete is a button on the read page that opens an `alert-dialog` (design §7.2).
 2. **Release** (`/import/release?folder=…`): the details form, prefilled from `releaseSuggestion`. Tag artist names that match an artist are picked already, and the others are named so they can be created. Saving replaces the history entry with `/import/:id/release?folder=…`, where going back edits the release.
 3. **Tracks:** the tracks form with `folder`. There's a row for each audio file in the folder that isn't a track yet, prefilled from `trackSuggestions`. On a regular release, tag artists who are release artists aren't added to the tracks.
 4. **Cover & files:** the folder's images and other files. The cover is chosen among the images, defaulting to one named cover, folder or front. Each other file gets a checkbox and a note. The cover isn't also a file link.
-5. **Credits:** the credits form. Finish opens the release page.
+5. **Credits:** the credits form.
+6. **Tags:** the tags form. Finish opens the release page.
 
 Files are registered only when a step saves them, together with what uses them.
+
+### Tags
+
+- **Routes** include the type, `/tags/:type/:id`, where the type is `text`, `number` or `date`. An unknown type shows `NotFound`.
+- **The release page** shows a row per tag after Released, as "Genre: Pop, Rock". Each value links to the release list filtered by it. Date values show as dates ("Mar 1, 2024").
+- **The Tags tab** (`forms/tags.tsx`) lists the release's tags. A single-value tag is one input, and a multi-value tag is a `ChipList`. "Add a tag" picks one, or creates it. Saving sends every tag, and an emptied one is removed.
+- **Release list filters** are query string parameters, one per filter, which all have to match (`lib/tags.ts`):
+
+  | Parameter | Matches |
+  |---|---|
+  | `text.3=Rock` | Text tag 3 is Rock, ignoring case |
+  | `text.3.contains=ro` | Text tag 3 contains "ro" |
+  | `number.5=8` | Number tag 5 is 8 |
+  | `number.5.min=8`, `number.5.max=10` | Number tag 5 is at least 8, at most 10 |
+  | `date.2=2024` | Date tag 2 is in 2024: a date can be a year, a month or a day |
+  | `date.2.min=2024-03`, `date.2.max=2024` | Date tag 2 is on or after March 1, 2024, on or before Dec 31, 2024 |
+
+  "Genre is Rock and Score ≥ 8" is `?text.3=Rock&number.5.min=8`. Each filter is a chip ("Score ≥ 8") that removes it, and "Tag filter" adds one: "is" or "contains" for text, a range for numbers and dates. The list names the chips with `tagsByRef`, in its one query.
 
 ### Components
 

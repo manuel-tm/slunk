@@ -2,6 +2,7 @@ import type { Catalog, FileLinkInput, FileRef } from "../../slunk/catalog.ts"
 import type { ListKind } from "../../slunk/catalog/repository.ts"
 import { loadAll, loadRequired } from "./loaders.ts"
 import type { Resolvers } from "./resolvers_types.ts"
+import { tagFilters } from "./tagging.ts"
 
 const LIST_TYPES = {
   release_formats: "ReleaseFormat",
@@ -65,13 +66,14 @@ export const catalogResolvers: Resolvers = {
     artist: (_parent, { id }, { catalog }) => catalog.getArtist(n(id)),
     labels: (_parent, args, { catalog }) => catalog.listLabels(args),
     label: (_parent, { id }, { catalog }) => catalog.getLabel(n(id)),
-    releases: (_parent, args, { catalog }) =>
+    releases: (_parent, args, { catalog, tagging }) =>
       catalog.listReleases({
         ...args,
         format: optional(args.format),
         medium: optional(args.medium),
         label: optional(args.label),
         artist: optional(args.artist),
+        tags: tagFilters(tagging, args.tags),
       }),
     release: (_parent, { id }, { catalog }) => catalog.getRelease(n(id)),
     releasesTitled: (_parent, { title }, { catalog }) =>

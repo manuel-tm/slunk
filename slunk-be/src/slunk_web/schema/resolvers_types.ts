@@ -1,6 +1,8 @@
 import type { GraphQLResolveInfo } from 'graphql';
 import type { FileRecord as FileRecordModel, FileLink as FileLinkModel } from '../../slunk/media/repository.ts';
 import type { Artist as ArtistModel, Label as LabelModel, Release as ReleaseModel, Track as TrackModel, Credit as CreditModel, ListItem as ListItemModel, Appearance as AppearanceModel, ArtistCredit as ArtistCreditModel, FormatCount as FormatCountModel } from '../../slunk/catalog/repository.ts';
+import type { Tag as TagModel } from '../../slunk/tagging/repository.ts';
+import type { ReleaseTag as ReleaseTagModel } from '../../slunk/tagging.ts';
 import type { Context } from './context.ts';
 export type Maybe<T> = T | null;
 export type InputMaybe<T> = Maybe<T>;
@@ -107,6 +109,23 @@ export type CreditRole = ListItem & {
   kind: ListKind;
   name: Scalars['String']['output'];
   uses: Scalars['Int']['output'];
+};
+
+export type DateTag = Tag & {
+  __typename?: 'DateTag';
+  blockers: Array<Scalars['String']['output']>;
+  id: Scalars['ID']['output'];
+  multiValueReleases: ReleasePage;
+  multiple: Scalars['Boolean']['output'];
+  name: Scalars['String']['output'];
+  releaseCount: Scalars['Int']['output'];
+  type: TagType;
+};
+
+
+export type DateTagMultiValueReleasesArgs = {
+  page: Scalars['Int']['input'];
+  perPage: Scalars['Int']['input'];
 };
 
 /** A file the user registered. Slunk only reads it. */
@@ -279,6 +298,8 @@ export type Mutation = {
   createLabel: Label;
   createListItem: ListItem;
   createRelease: Release;
+  /** Tag names are unique across types, ignoring case. */
+  createTag: Tag;
   /** Creates a track from a registered audio file, reading its duration. */
   createTrack: Track;
   /** Fails while the artist is a release or track artist, or credited. */
@@ -291,6 +312,8 @@ export type Mutation = {
   deleteListItem: Scalars['ID']['output'];
   /** Fails while the release has tracks. */
   deleteRelease: Scalars['ID']['output'];
+  /** Fails while any release has a value. */
+  deleteTag: Scalars['ID']['output'];
   /** Deletes a track, its artists, credits and file links. Its audio file stays registered. */
   deleteTrack: Scalars['ID']['output'];
   /** Registers files on disk: reads their size, mtime and hash, and types them by extension. Paths already registered are returned as they are. */
@@ -300,6 +323,8 @@ export type Mutation = {
   setReleaseCredits: Release;
   /** Sets the cover and replaces the file links. Files given by path are registered first. */
   setReleaseFiles: Release;
+  /** Replaces every tag value on the release. A tag left out, or with only blank values, is removed. */
+  setReleaseTags: Release;
   /** Saves the whole track list: rows with an id are updated, the others create tracks, and tracks left out are deleted. Their files stay registered. */
   setReleaseTracks: Release;
   updateArtist: Artist;
@@ -308,6 +333,8 @@ export type Mutation = {
   updateLabel: Label;
   /** The details: title, date, artists, labels, formats, media, catalog number. */
   updateRelease: Release;
+  /** The type can't change. Switching to single-value fails while a release has several values. */
+  updateTag: Tag;
   updateTrack: Track;
 };
 
@@ -330,6 +357,12 @@ export type MutationCreateListItemArgs = {
 
 export type MutationCreateReleaseArgs = {
   input: ReleaseInput;
+};
+
+
+export type MutationCreateTagArgs = {
+  input: TagInput;
+  type: TagType;
 };
 
 
@@ -364,6 +397,12 @@ export type MutationDeleteReleaseArgs = {
 };
 
 
+export type MutationDeleteTagArgs = {
+  id: Scalars['ID']['input'];
+  type: TagType;
+};
+
+
 export type MutationDeleteTrackArgs = {
   id: Scalars['ID']['input'];
 };
@@ -390,6 +429,12 @@ export type MutationSetReleaseCreditsArgs = {
 export type MutationSetReleaseFilesArgs = {
   id: Scalars['ID']['input'];
   input: ReleaseFilesInput;
+};
+
+
+export type MutationSetReleaseTagsArgs = {
+  id: Scalars['ID']['input'];
+  tags: Array<ReleaseTagInput>;
 };
 
 
@@ -423,9 +468,33 @@ export type MutationUpdateReleaseArgs = {
 };
 
 
+export type MutationUpdateTagArgs = {
+  id: Scalars['ID']['input'];
+  input: TagInput;
+  type: TagType;
+};
+
+
 export type MutationUpdateTrackArgs = {
   id: Scalars['ID']['input'];
   input: TrackInput;
+};
+
+export type NumberTag = Tag & {
+  __typename?: 'NumberTag';
+  blockers: Array<Scalars['String']['output']>;
+  id: Scalars['ID']['output'];
+  multiValueReleases: ReleasePage;
+  multiple: Scalars['Boolean']['output'];
+  name: Scalars['String']['output'];
+  releaseCount: Scalars['Int']['output'];
+  type: TagType;
+};
+
+
+export type NumberTagMultiValueReleasesArgs = {
+  page: Scalars['Int']['input'];
+  perPage: Scalars['Int']['input'];
 };
 
 export type Query = {
@@ -455,6 +524,11 @@ export type Query = {
   releases: ReleasePage;
   /** Releases with this title, ignoring case: an import checks it so a release isn't imported twice. */
   releasesTitled: Array<Release>;
+  tag?: Maybe<Tag>;
+  /** Tag definitions of one type, or of every type when `type` is left out. */
+  tags: TagPage;
+  /** These tags, in the same order, leaving out any that don't exist. The release list names its tag filters with it. */
+  tagsByRef: Array<Tag>;
   track?: Maybe<Track>;
   /** A row for each audio file in a folder and its subfolders: from embedded tags, or else the file's name (`CD2/03 Title.flac` is disc 2, track 3). */
   trackSuggestions: Array<TrackSuggestion>;
@@ -548,11 +622,32 @@ export type QueryReleasesArgs = {
   perPage: Scalars['Int']['input'];
   q?: InputMaybe<Scalars['String']['input']>;
   sort?: InputMaybe<Scalars['String']['input']>;
+  tags: Array<TagFilterInput>;
 };
 
 
 export type QueryReleasesTitledArgs = {
   title: Scalars['String']['input'];
+};
+
+
+export type QueryTagArgs = {
+  id: Scalars['ID']['input'];
+  type: TagType;
+};
+
+
+export type QueryTagsArgs = {
+  page: Scalars['Int']['input'];
+  perPage: Scalars['Int']['input'];
+  q?: InputMaybe<Scalars['String']['input']>;
+  sort?: InputMaybe<Scalars['String']['input']>;
+  type?: InputMaybe<TagType>;
+};
+
+
+export type QueryTagsByRefArgs = {
+  refs: Array<TagRefInput>;
 };
 
 
@@ -594,6 +689,8 @@ export type Release = {
   media: Array<ReleaseMedium>;
   /** With only its known parts: `2006`, `2006-01` or `2006-01-10`. */
   released?: Maybe<Scalars['String']['output']>;
+  /** By tag name. */
+  tags: Array<ReleaseTag>;
   title: Scalars['String']['output'];
   /** In order: disc, then number. */
   tracks: Array<Track>;
@@ -663,6 +760,21 @@ export type ReleaseSuggestion = {
   title: Scalars['String']['output'];
 };
 
+/** A tag set on a release, with its values: one for a single-value tag. */
+export type ReleaseTag = {
+  __typename?: 'ReleaseTag';
+  tag: Tag;
+  /** As text: `Rock`, `8.5`, or a date as `2006-01-10`. In the order they were set. */
+  values: Array<Scalars['String']['output']>;
+};
+
+export type ReleaseTagInput = {
+  tagId: Scalars['ID']['input'];
+  type: TagType;
+  /** As typed: a number like `8.5`, a date as `2006`, `2006-01` or `2006-01-10`. Blank values are left out. */
+  values: Array<Scalars['String']['input']>;
+};
+
 /** A track of the release: `id` for one it has, else `fileId` or `path` for a new one. */
 export type ReleaseTrackInput = {
   artistIds: Array<Scalars['ID']['input']>;
@@ -681,6 +793,103 @@ export type Subfolder = {
   hasRegisteredFiles: Scalars['Boolean']['output'];
   name: Scalars['String']['output'];
   path: Scalars['String']['output'];
+};
+
+/** A tag definition, like Genre or Score. */
+export type Tag = {
+  blockers: Array<Scalars['String']['output']>;
+  id: Scalars['ID']['output'];
+  /** Releases with several values, which keep the tag from being single-value. */
+  multiValueReleases: ReleasePage;
+  /** Several values per release, or at most one. */
+  multiple: Scalars['Boolean']['output'];
+  name: Scalars['String']['output'];
+  /** How many releases have a value. */
+  releaseCount: Scalars['Int']['output'];
+  type: TagType;
+};
+
+
+/** A tag definition, like Genre or Score. */
+export type TagMultiValueReleasesArgs = {
+  page: Scalars['Int']['input'];
+  perPage: Scalars['Int']['input'];
+};
+
+/** A release list filter on one tag. Text takes `equals` or `contains`; numbers and dates take `equals`, or `min` and `max`. */
+export type TagFilterInput = {
+  /** Text only: part of the value, ignoring case. */
+  contains?: InputMaybe<Scalars['String']['input']>;
+  /** The value, ignoring case for text. A date covers its whole year, month or day (`2006`, `2006-01`, `2006-01-10`). */
+  equals?: InputMaybe<Scalars['String']['input']>;
+  /** Number or date, included. A date runs to its last day: `2006` includes Dec 31, 2006. */
+  max?: InputMaybe<Scalars['String']['input']>;
+  /** Number or date, included. A date starts on its first day. */
+  min?: InputMaybe<Scalars['String']['input']>;
+  tagId: Scalars['ID']['input'];
+  type: TagType;
+};
+
+export type TagInput = {
+  multiple: Scalars['Boolean']['input'];
+  name: Scalars['String']['input'];
+};
+
+export type TagPage = {
+  __typename?: 'TagPage';
+  items: Array<Tag>;
+  total: Scalars['Int']['output'];
+};
+
+export type TagRefInput = {
+  id: Scalars['ID']['input'];
+  type: TagType;
+};
+
+/** Each type has its own tables, so the same id exists once per type. */
+export type TagType =
+  /** A day, without a time */
+  | 'date'
+  /** A real number */
+  | 'number'
+  | 'text';
+
+export type TagValueCount = {
+  __typename?: 'TagValueCount';
+  releases: Scalars['Int']['output'];
+  value: Scalars['String']['output'];
+};
+
+export type TagValuePage = {
+  __typename?: 'TagValuePage';
+  items: Array<TagValueCount>;
+  total: Scalars['Int']['output'];
+};
+
+export type TextTag = Tag & {
+  __typename?: 'TextTag';
+  blockers: Array<Scalars['String']['output']>;
+  id: Scalars['ID']['output'];
+  multiValueReleases: ReleasePage;
+  multiple: Scalars['Boolean']['output'];
+  name: Scalars['String']['output'];
+  releaseCount: Scalars['Int']['output'];
+  type: TagType;
+  /** The values, with how many releases have each, the most used first. Values that differ only in case count as one. */
+  values: TagValuePage;
+};
+
+
+export type TextTagMultiValueReleasesArgs = {
+  page: Scalars['Int']['input'];
+  perPage: Scalars['Int']['input'];
+};
+
+
+export type TextTagValuesArgs = {
+  page: Scalars['Int']['input'];
+  perPage: Scalars['Int']['input'];
+  q?: InputMaybe<Scalars['String']['input']>;
 };
 
 export type Track = {
@@ -833,6 +1042,7 @@ export type ResolversTypes = {
   Credit: ResolverTypeWrapper<CreditModel>;
   CreditInput: CreditInput;
   CreditRole: ResolverTypeWrapper<ListItemModel>;
+  DateTag: ResolverTypeWrapper<TagModel>;
   File: ResolverTypeWrapper<FileRecordModel>;
   FileCounts: ResolverTypeWrapper<FileCounts>;
   FileLink: ResolverTypeWrapper<FileLinkModel>;
@@ -856,6 +1066,7 @@ export type ResolversTypes = {
   ListItemPage: ResolverTypeWrapper<Omit<ListItemPage, 'items'> & { items: Array<ResolversTypes['ListItem']> }>;
   ListKind: ListKind;
   Mutation: ResolverTypeWrapper<Record<PropertyKey, never>>;
+  NumberTag: ResolverTypeWrapper<TagModel>;
   Query: ResolverTypeWrapper<Record<PropertyKey, never>>;
   Release: ResolverTypeWrapper<ReleaseModel>;
   ReleaseCreditsInput: ReleaseCreditsInput;
@@ -865,9 +1076,20 @@ export type ResolversTypes = {
   ReleaseMedium: ResolverTypeWrapper<ListItemModel>;
   ReleasePage: ResolverTypeWrapper<Omit<ReleasePage, 'items'> & { items: Array<ResolversTypes['Release']> }>;
   ReleaseSuggestion: ResolverTypeWrapper<Omit<ReleaseSuggestion, 'artists' | 'sameTitle'> & { artists: Array<ResolversTypes['ArtistSuggestion']>, sameTitle: Array<ResolversTypes['Release']> }>;
+  ReleaseTag: ResolverTypeWrapper<ReleaseTagModel>;
+  ReleaseTagInput: ReleaseTagInput;
   ReleaseTrackInput: ReleaseTrackInput;
   String: ResolverTypeWrapper<Scalars['String']['output']>;
   Subfolder: ResolverTypeWrapper<Subfolder>;
+  Tag: ResolverTypeWrapper<TagModel>;
+  TagFilterInput: TagFilterInput;
+  TagInput: TagInput;
+  TagPage: ResolverTypeWrapper<Omit<TagPage, 'items'> & { items: Array<ResolversTypes['Tag']> }>;
+  TagRefInput: TagRefInput;
+  TagType: TagType;
+  TagValueCount: ResolverTypeWrapper<TagValueCount>;
+  TagValuePage: ResolverTypeWrapper<TagValuePage>;
+  TextTag: ResolverTypeWrapper<TagModel>;
   Track: ResolverTypeWrapper<TrackModel>;
   TrackCreditsInput: TrackCreditsInput;
   TrackInput: TrackInput;
@@ -890,6 +1112,7 @@ export type ResolversParentTypes = {
   Credit: CreditModel;
   CreditInput: CreditInput;
   CreditRole: ListItemModel;
+  DateTag: TagModel;
   File: FileRecordModel;
   FileCounts: FileCounts;
   FileLink: FileLinkModel;
@@ -910,6 +1133,7 @@ export type ResolversParentTypes = {
   ListItem: ListItemModel;
   ListItemPage: Omit<ListItemPage, 'items'> & { items: Array<ResolversParentTypes['ListItem']> };
   Mutation: Record<PropertyKey, never>;
+  NumberTag: TagModel;
   Query: Record<PropertyKey, never>;
   Release: ReleaseModel;
   ReleaseCreditsInput: ReleaseCreditsInput;
@@ -919,9 +1143,19 @@ export type ResolversParentTypes = {
   ReleaseMedium: ListItemModel;
   ReleasePage: Omit<ReleasePage, 'items'> & { items: Array<ResolversParentTypes['Release']> };
   ReleaseSuggestion: Omit<ReleaseSuggestion, 'artists' | 'sameTitle'> & { artists: Array<ResolversParentTypes['ArtistSuggestion']>, sameTitle: Array<ResolversParentTypes['Release']> };
+  ReleaseTag: ReleaseTagModel;
+  ReleaseTagInput: ReleaseTagInput;
   ReleaseTrackInput: ReleaseTrackInput;
   String: Scalars['String']['output'];
   Subfolder: Subfolder;
+  Tag: TagModel;
+  TagFilterInput: TagFilterInput;
+  TagInput: TagInput;
+  TagPage: Omit<TagPage, 'items'> & { items: Array<ResolversParentTypes['Tag']> };
+  TagRefInput: TagRefInput;
+  TagValueCount: TagValueCount;
+  TagValuePage: TagValuePage;
+  TextTag: TagModel;
   Track: TrackModel;
   TrackCreditsInput: TrackCreditsInput;
   TrackInput: TrackInput;
@@ -991,6 +1225,17 @@ export type CreditRoleResolvers<ContextType = Context, ParentType extends Resolv
   kind?: Resolver<ResolversTypes['ListKind'], ParentType, ContextType>;
   name?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   uses?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
+};
+
+export type DateTagResolvers<ContextType = Context, ParentType extends ResolversParentTypes['DateTag'] = ResolversParentTypes['DateTag']> = {
+  blockers?: Resolver<Array<ResolversTypes['String']>, ParentType, ContextType>;
+  id?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
+  multiValueReleases?: Resolver<ResolversTypes['ReleasePage'], ParentType, ContextType, RequireFields<DateTagMultiValueReleasesArgs, 'page' | 'perPage'>>;
+  multiple?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType>;
+  name?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  releaseCount?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
+  type?: Resolver<ResolversTypes['TagType'], ParentType, ContextType>;
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 };
 
@@ -1086,23 +1331,38 @@ export type MutationResolvers<ContextType = Context, ParentType extends Resolver
   createLabel?: Resolver<ResolversTypes['Label'], ParentType, ContextType, RequireFields<MutationCreateLabelArgs, 'input'>>;
   createListItem?: Resolver<ResolversTypes['ListItem'], ParentType, ContextType, RequireFields<MutationCreateListItemArgs, 'kind' | 'name'>>;
   createRelease?: Resolver<ResolversTypes['Release'], ParentType, ContextType, RequireFields<MutationCreateReleaseArgs, 'input'>>;
+  createTag?: Resolver<ResolversTypes['Tag'], ParentType, ContextType, RequireFields<MutationCreateTagArgs, 'input' | 'type'>>;
   createTrack?: Resolver<ResolversTypes['Track'], ParentType, ContextType, RequireFields<MutationCreateTrackArgs, 'input'>>;
   deleteArtist?: Resolver<ResolversTypes['ID'], ParentType, ContextType, RequireFields<MutationDeleteArtistArgs, 'id'>>;
   deleteFile?: Resolver<ResolversTypes['ID'], ParentType, ContextType, RequireFields<MutationDeleteFileArgs, 'id'>>;
   deleteLabel?: Resolver<ResolversTypes['ID'], ParentType, ContextType, RequireFields<MutationDeleteLabelArgs, 'id'>>;
   deleteListItem?: Resolver<ResolversTypes['ID'], ParentType, ContextType, RequireFields<MutationDeleteListItemArgs, 'id' | 'kind'>>;
   deleteRelease?: Resolver<ResolversTypes['ID'], ParentType, ContextType, RequireFields<MutationDeleteReleaseArgs, 'id'>>;
+  deleteTag?: Resolver<ResolversTypes['ID'], ParentType, ContextType, RequireFields<MutationDeleteTagArgs, 'id' | 'type'>>;
   deleteTrack?: Resolver<ResolversTypes['ID'], ParentType, ContextType, RequireFields<MutationDeleteTrackArgs, 'id'>>;
   registerFiles?: Resolver<Array<ResolversTypes['File']>, ParentType, ContextType, RequireFields<MutationRegisterFilesArgs, 'paths'>>;
   renameListItem?: Resolver<ResolversTypes['ListItem'], ParentType, ContextType, RequireFields<MutationRenameListItemArgs, 'id' | 'kind' | 'name'>>;
   setReleaseCredits?: Resolver<ResolversTypes['Release'], ParentType, ContextType, RequireFields<MutationSetReleaseCreditsArgs, 'id' | 'input'>>;
   setReleaseFiles?: Resolver<ResolversTypes['Release'], ParentType, ContextType, RequireFields<MutationSetReleaseFilesArgs, 'id' | 'input'>>;
+  setReleaseTags?: Resolver<ResolversTypes['Release'], ParentType, ContextType, RequireFields<MutationSetReleaseTagsArgs, 'id' | 'tags'>>;
   setReleaseTracks?: Resolver<ResolversTypes['Release'], ParentType, ContextType, RequireFields<MutationSetReleaseTracksArgs, 'id' | 'tracks'>>;
   updateArtist?: Resolver<ResolversTypes['Artist'], ParentType, ContextType, RequireFields<MutationUpdateArtistArgs, 'id' | 'input'>>;
   updateFile?: Resolver<ResolversTypes['File'], ParentType, ContextType, RequireFields<MutationUpdateFileArgs, 'id' | 'input'>>;
   updateLabel?: Resolver<ResolversTypes['Label'], ParentType, ContextType, RequireFields<MutationUpdateLabelArgs, 'id' | 'input'>>;
   updateRelease?: Resolver<ResolversTypes['Release'], ParentType, ContextType, RequireFields<MutationUpdateReleaseArgs, 'id' | 'input'>>;
+  updateTag?: Resolver<ResolversTypes['Tag'], ParentType, ContextType, RequireFields<MutationUpdateTagArgs, 'id' | 'input' | 'type'>>;
   updateTrack?: Resolver<ResolversTypes['Track'], ParentType, ContextType, RequireFields<MutationUpdateTrackArgs, 'id' | 'input'>>;
+};
+
+export type NumberTagResolvers<ContextType = Context, ParentType extends ResolversParentTypes['NumberTag'] = ResolversParentTypes['NumberTag']> = {
+  blockers?: Resolver<Array<ResolversTypes['String']>, ParentType, ContextType>;
+  id?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
+  multiValueReleases?: Resolver<ResolversTypes['ReleasePage'], ParentType, ContextType, RequireFields<NumberTagMultiValueReleasesArgs, 'page' | 'perPage'>>;
+  multiple?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType>;
+  name?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  releaseCount?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
+  type?: Resolver<ResolversTypes['TagType'], ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 };
 
 export type QueryResolvers<ContextType = Context, ParentType extends ResolversParentTypes['Query'] = ResolversParentTypes['Query']> = {
@@ -1121,8 +1381,11 @@ export type QueryResolvers<ContextType = Context, ParentType extends ResolversPa
   listItems?: Resolver<ResolversTypes['ListItemPage'], ParentType, ContextType, RequireFields<QueryListItemsArgs, 'kind' | 'page' | 'perPage'>>;
   release?: Resolver<Maybe<ResolversTypes['Release']>, ParentType, ContextType, RequireFields<QueryReleaseArgs, 'id'>>;
   releaseSuggestion?: Resolver<ResolversTypes['ReleaseSuggestion'], ParentType, ContextType, RequireFields<QueryReleaseSuggestionArgs, 'folder'>>;
-  releases?: Resolver<ResolversTypes['ReleasePage'], ParentType, ContextType, RequireFields<QueryReleasesArgs, 'page' | 'perPage'>>;
+  releases?: Resolver<ResolversTypes['ReleasePage'], ParentType, ContextType, RequireFields<QueryReleasesArgs, 'page' | 'perPage' | 'tags'>>;
   releasesTitled?: Resolver<Array<ResolversTypes['Release']>, ParentType, ContextType, RequireFields<QueryReleasesTitledArgs, 'title'>>;
+  tag?: Resolver<Maybe<ResolversTypes['Tag']>, ParentType, ContextType, RequireFields<QueryTagArgs, 'id' | 'type'>>;
+  tags?: Resolver<ResolversTypes['TagPage'], ParentType, ContextType, RequireFields<QueryTagsArgs, 'page' | 'perPage'>>;
+  tagsByRef?: Resolver<Array<ResolversTypes['Tag']>, ParentType, ContextType, RequireFields<QueryTagsByRefArgs, 'refs'>>;
   track?: Resolver<Maybe<ResolversTypes['Track']>, ParentType, ContextType, RequireFields<QueryTrackArgs, 'id'>>;
   trackSuggestions?: Resolver<Array<ResolversTypes['TrackSuggestion']>, ParentType, ContextType, RequireFields<QueryTrackSuggestionsArgs, 'folder'>>;
   tracks?: Resolver<ResolversTypes['TrackPage'], ParentType, ContextType, RequireFields<QueryTracksArgs, 'page' | 'perPage'>>;
@@ -1143,6 +1406,7 @@ export type ReleaseResolvers<ContextType = Context, ParentType extends Resolvers
   labels?: Resolver<Array<ResolversTypes['Label']>, ParentType, ContextType>;
   media?: Resolver<Array<ResolversTypes['ReleaseMedium']>, ParentType, ContextType>;
   released?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  tags?: Resolver<Array<ResolversTypes['ReleaseTag']>, ParentType, ContextType>;
   title?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   tracks?: Resolver<Array<ResolversTypes['Track']>, ParentType, ContextType>;
   updatedAt?: Resolver<ResolversTypes['Float'], ParentType, ContextType>;
@@ -1182,10 +1446,46 @@ export type ReleaseSuggestionResolvers<ContextType = Context, ParentType extends
   title?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
 };
 
+export type ReleaseTagResolvers<ContextType = Context, ParentType extends ResolversParentTypes['ReleaseTag'] = ResolversParentTypes['ReleaseTag']> = {
+  tag?: Resolver<ResolversTypes['Tag'], ParentType, ContextType>;
+  values?: Resolver<Array<ResolversTypes['String']>, ParentType, ContextType>;
+};
+
 export type SubfolderResolvers<ContextType = Context, ParentType extends ResolversParentTypes['Subfolder'] = ResolversParentTypes['Subfolder']> = {
   hasRegisteredFiles?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType>;
   name?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   path?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+};
+
+export type TagResolvers<ContextType = Context, ParentType extends ResolversParentTypes['Tag'] = ResolversParentTypes['Tag']> = {
+  __resolveType: TypeResolveFn<'DateTag' | 'NumberTag' | 'TextTag', ParentType, ContextType>;
+};
+
+export type TagPageResolvers<ContextType = Context, ParentType extends ResolversParentTypes['TagPage'] = ResolversParentTypes['TagPage']> = {
+  items?: Resolver<Array<ResolversTypes['Tag']>, ParentType, ContextType>;
+  total?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
+};
+
+export type TagValueCountResolvers<ContextType = Context, ParentType extends ResolversParentTypes['TagValueCount'] = ResolversParentTypes['TagValueCount']> = {
+  releases?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
+  value?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+};
+
+export type TagValuePageResolvers<ContextType = Context, ParentType extends ResolversParentTypes['TagValuePage'] = ResolversParentTypes['TagValuePage']> = {
+  items?: Resolver<Array<ResolversTypes['TagValueCount']>, ParentType, ContextType>;
+  total?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
+};
+
+export type TextTagResolvers<ContextType = Context, ParentType extends ResolversParentTypes['TextTag'] = ResolversParentTypes['TextTag']> = {
+  blockers?: Resolver<Array<ResolversTypes['String']>, ParentType, ContextType>;
+  id?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
+  multiValueReleases?: Resolver<ResolversTypes['ReleasePage'], ParentType, ContextType, RequireFields<TextTagMultiValueReleasesArgs, 'page' | 'perPage'>>;
+  multiple?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType>;
+  name?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  releaseCount?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
+  type?: Resolver<ResolversTypes['TagType'], ParentType, ContextType>;
+  values?: Resolver<ResolversTypes['TagValuePage'], ParentType, ContextType, RequireFields<TextTagValuesArgs, 'page' | 'perPage'>>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 };
 
 export type TrackResolvers<ContextType = Context, ParentType extends ResolversParentTypes['Track'] = ResolversParentTypes['Track']> = {
@@ -1231,6 +1531,7 @@ export type Resolvers<ContextType = Context> = {
   CatalogTotals?: CatalogTotalsResolvers<ContextType>;
   Credit?: CreditResolvers<ContextType>;
   CreditRole?: CreditRoleResolvers<ContextType>;
+  DateTag?: DateTagResolvers<ContextType>;
   File?: FileResolvers<ContextType>;
   FileCounts?: FileCountsResolvers<ContextType>;
   FileLink?: FileLinkResolvers<ContextType>;
@@ -1245,13 +1546,20 @@ export type Resolvers<ContextType = Context> = {
   ListItem?: ListItemResolvers<ContextType>;
   ListItemPage?: ListItemPageResolvers<ContextType>;
   Mutation?: MutationResolvers<ContextType>;
+  NumberTag?: NumberTagResolvers<ContextType>;
   Query?: QueryResolvers<ContextType>;
   Release?: ReleaseResolvers<ContextType>;
   ReleaseFormat?: ReleaseFormatResolvers<ContextType>;
   ReleaseMedium?: ReleaseMediumResolvers<ContextType>;
   ReleasePage?: ReleasePageResolvers<ContextType>;
   ReleaseSuggestion?: ReleaseSuggestionResolvers<ContextType>;
+  ReleaseTag?: ReleaseTagResolvers<ContextType>;
   Subfolder?: SubfolderResolvers<ContextType>;
+  Tag?: TagResolvers<ContextType>;
+  TagPage?: TagPageResolvers<ContextType>;
+  TagValueCount?: TagValueCountResolvers<ContextType>;
+  TagValuePage?: TagValuePageResolvers<ContextType>;
+  TextTag?: TextTagResolvers<ContextType>;
   Track?: TrackResolvers<ContextType>;
   TrackPage?: TrackPageResolvers<ContextType>;
   TrackSuggestion?: TrackSuggestionResolvers<ContextType>;

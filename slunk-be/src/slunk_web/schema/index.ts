@@ -3,6 +3,7 @@ import { join } from "node:path"
 import { catalogResolvers } from "./catalog.ts"
 import { healthResolvers } from "./health.ts"
 import { mediaResolvers } from "./media.ts"
+import { taggingResolvers } from "./tagging.ts"
 
 /** The SDL of every .graphql file in this folder. */
 export const typeDefs = readdirSync(import.meta.dirname)
@@ -10,4 +11,9 @@ export const typeDefs = readdirSync(import.meta.dirname)
   .sort()
   .map((file) => readFileSync(join(import.meta.dirname, file), "utf8"))
 
-export const resolvers = [healthResolvers, mediaResolvers, catalogResolvers]
+export const resolvers = [
+  healthResolvers,
+  mediaResolvers,
+  catalogResolvers,
+  taggingResolvers,
+]

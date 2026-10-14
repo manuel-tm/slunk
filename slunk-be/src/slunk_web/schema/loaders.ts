@@ -2,6 +2,8 @@ import DataLoader from "dataloader"
 import type { Catalog } from "../../slunk/catalog.ts"
 import type { ListKind, Track } from "../../slunk/catalog/repository.ts"
 import type { Media } from "../../slunk/media.ts"
+import type { Tagging } from "../../slunk/tagging.ts"
+import type { TagType } from "../../slunk/tagging/repository.ts"
 
 /**
  * Batches the related rows a page shows into one query per relation (design
@@ -10,12 +12,15 @@ import type { Media } from "../../slunk/media.ts"
 export function createLoaders({
   media,
   catalog,
+  tagging,
 }: {
   media: Media
   catalog: Catalog
+  tagging: Tagging
 }) {
   const list = (kind: ListKind) =>
     byId((ids) => catalog.listItemsByIds(kind, ids))
+  const tag = (type: TagType) => byId((ids) => tagging.tagsByIds(type, ids))
 
   return {
     file: byId(media.filesByIds),
@@ -37,6 +42,8 @@ export function createLoaders({
     releaseFiles: grouped((ids) => media.fileLinksOf("release", ids)),
     artistFiles: grouped((ids) => media.fileLinksOf("artist", ids)),
     trackFiles: grouped((ids) => media.fileLinksOf("track", ids)),
+    tag: { text: tag("text"), number: tag("number"), date: tag("date") },
+    releaseTags: grouped(tagging.releaseTagsOf),
     trackOfFile: new DataLoader<number, Track | null>(async (ids) => {
       const tracks = await catalog.tracksOfFiles(ids)
       return ids.map((id) => tracks.get(id) ?? null)

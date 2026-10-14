@@ -2,6 +2,7 @@ import type { CodegenConfig } from "@graphql-codegen/cli"
 
 const CATALOG = "../../slunk/catalog/repository.ts"
 const MEDIA = "../../slunk/media/repository.ts"
+const TAGS = "../../slunk/tagging/repository.ts"
 
 // Resolver types from the SDL: `npm run codegen` after changing a .graphql file
 const config: CodegenConfig = {
@@ -35,6 +36,11 @@ const config: CodegenConfig = {
           Appearance: `${CATALOG}#Appearance`,
           ArtistCredit: `${CATALOG}#ArtistCredit`,
           FormatCount: `${CATALOG}#FormatCount`,
+          Tag: `${TAGS}#Tag`,
+          TextTag: `${TAGS}#Tag`,
+          NumberTag: `${TAGS}#Tag`,
+          DateTag: `${TAGS}#Tag`,
+          ReleaseTag: "../../slunk/tagging.ts#ReleaseTag",
         },
       },
     },

@@ -5,6 +5,8 @@ import { LabelPicker, ListItemPicker } from "@/components/pickers"
 import { ReleaseTable } from "@/components/release-table"
 import { graphql } from "@/gql"
 import { useListParams } from "@/hooks/use-list-params"
+import { tagFilterInput, tagFiltersOf } from "@/lib/tags"
+import { TagFilters } from "@/routes/releases/tag-filters"
 
 const ReleasesQuery = graphql(`
   query Releases(
@@ -21,6 +23,9 @@ const ReleasesQuery = graphql(`
     $withFormat: Boolean!
     $withMedium: Boolean!
     $withLabel: Boolean!
+    $tags: [TagFilterInput!]!
+    $tagRefs: [TagRefInput!]!
+    $withTags: Boolean!
   ) {
     releases(
       page: $page
@@ -30,6 +35,7 @@ const ReleasesQuery = graphql(`
       format: $format
       medium: $medium
       label: $label
+      tags: $tags
     ) {
       total
       items {
@@ -75,18 +81,33 @@ const ReleasesQuery = graphql(`
       id
       name
     }
+    filterTags: tagsByRef(refs: $tagRefs) @include(if: $withTags) {
+      id
+      type
+      name
+    }
   }
 `)
 
 /**
  * `/releases` (design §7.6). The filters combine: `?format=3&medium=4` is
- * "EPs on vinyl".
+ * "EPs on vinyl", and `?text.3=Rock&number.5.min=8` is "Genre is Rock and
+ * Score ≥ 8".
  */
 export function ReleaseList() {
   const list = useListParams()
   const format = list.params.get("format")
   const medium = list.params.get("medium")
   const label = list.params.get("label")
+  const tagFilters = tagFiltersOf(list.params)
+  const tagRefs = [
+    ...new Map(
+      tagFilters.map((f) => [
+        `${f.type}:${f.tagId}`,
+        { type: f.type, id: f.tagId },
+      ])
+    ).values(),
+  ]
   const { data, error } = useQuery(ReleasesQuery, {
     variables: {
       page: list.page,
@@ -102,8 +123,14 @@ export function ReleaseList() {
       withFormat: format !== null,
       withMedium: medium !== null,
       withLabel: label !== null,
+      tags: tagFilters.map(tagFilterInput),
+      tagRefs,
+      withTags: tagRefs.length > 0,
     },
   })
+  const tagNames = new Map(
+    (data?.filterTags ?? []).map((tag) => [`${tag.type}:${tag.id}`, tag.name])
+  )
 
   return (
     <ListLayout
@@ -136,6 +163,12 @@ export function ReleaseList() {
               onChange={(option) => list.update({ label: option?.id ?? null })}
             />
           </div>
+          <TagFilters
+            filters={tagFilters}
+            names={tagNames}
+            onAdd={list.append}
+            onRemove={(filter) => list.remove(filter.key, filter.value)}
+          />
         </>
       }
       total={data?.releases.total}

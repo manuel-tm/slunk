@@ -31,6 +31,7 @@ import {
   ReleaseDetailsForm,
 } from "@/routes/releases/forms/details"
 import { SetReleaseFiles } from "@/routes/releases/forms/files"
+import { ReleaseTagsForm } from "@/routes/releases/forms/tags"
 import { ReleaseTracksForm } from "@/routes/releases/forms/tracks"
 
 const STEPS = [
@@ -39,6 +40,7 @@ const STEPS = [
   "Tracks",
   "Cover & files",
   "Credits",
+  "Tags",
 ] as const
 type Step = (typeof STEPS)[number]
 
@@ -53,6 +55,7 @@ function stepUrl(step: Step, id: string | undefined, folder: string | null) {
     Tracks: "tracks",
     "Cover & files": "files",
     Credits: "credits",
+    Tags: "tags",
   }[step]
   return `/import/${id}/${path}${query}`
 }
@@ -525,7 +528,7 @@ function FolderFilesForm({
   )
 }
 
-/** Step 5: credits. Finish opens the release page. */
+/** Step 5: credits. */
 export function ImportCredits() {
   const navigate = useNavigate()
   const { id = "" } = useParams()
@@ -534,6 +537,23 @@ export function ImportCredits() {
   return (
     <ImportFrame step="Credits" id={id} folder={folder}>
       <ReleaseCreditsForm
+        releaseId={id}
+        submitLabel="Save and continue"
+        onSaved={() => navigate(stepUrl("Tags", id, folder))}
+      />
+    </ImportFrame>
+  )
+}
+
+/** Step 6: tags. Finish opens the release page. */
+export function ImportTags() {
+  const navigate = useNavigate()
+  const { id = "" } = useParams()
+  const [params] = useSearchParams()
+  const folder = params.get("folder")
+  return (
+    <ImportFrame step="Tags" id={id} folder={folder}>
+      <ReleaseTagsForm
         releaseId={id}
         submitLabel="Finish"
         onSaved={() => navigate(`/releases/${id}`)}

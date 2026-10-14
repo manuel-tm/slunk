@@ -1,7 +1,6 @@
 // The catalog context: artists, labels, releases with their formats, media
 // and labels, tracks, and credits (design §6).
 import { basename, dirname } from "node:path"
-import { formatReleaseDate, parseReleaseDate } from "./catalog/dates.ts"
 import type {
   CatalogStore,
   CreditOwner,
@@ -10,9 +9,11 @@ import type {
   ReleaseLink,
   TrackArtist,
 } from "./catalog/repository.ts"
+import { formatDate, type ParsedDate, parseDate } from "./dates.ts"
 import type { Media } from "./media.ts"
 import type { FileRecord, LinkOwner } from "./media/repository.ts"
 import { type ListArgs, pagingOf, searchOf, sortOf } from "./paging.ts"
+import type { TagFilter } from "./tagging/repository.ts"
 
 export type Catalog = ReturnType<typeof createCatalog>
 
@@ -129,7 +130,7 @@ export function createCatalog({
     return {
       title: input.title.trim(),
       ...(released
-        ? parseReleaseDate(released)
+        ? releaseDate(parseDate(released))
         : { releaseDate: null, releaseDatePrecision: null }),
       catalogNumber: input.catalogNumber?.trim() || null,
       variousArtists: input.variousArtists,
@@ -324,6 +325,7 @@ export function createCatalog({
         medium?: number | null
         label?: number | null
         artist?: number | null
+        tags?: TagFilter[]
       }
     ) =>
       store.releases.list({
@@ -334,6 +336,7 @@ export function createCatalog({
         medium: args.medium ?? undefined,
         label: args.label ?? undefined,
         artist: args.artist ?? undefined,
+        tags: args.tags,
       }),
     getRelease: (id: number) => store.releases.get(id),
     releasesByIds: (ids: readonly number[]) => store.releases.getMany(ids),
@@ -345,7 +348,7 @@ export function createCatalog({
     released: (release: Release) =>
       release.releaseDate === null || release.releaseDatePrecision === null
         ? null
-        : formatReleaseDate(release.releaseDate, release.releaseDatePrecision),
+        : formatDate(release.releaseDate, release.releaseDatePrecision),
 
     async createRelease(input: ReleaseInput) {
       const values = releaseValues(input)
@@ -661,9 +664,13 @@ function fromFileName(path: string, folder: string) {
   }
 }
 
+function releaseDate({ epoch, precision }: ParsedDate) {
+  return { releaseDate: epoch, releaseDatePrecision: precision }
+}
+
 function isValidDate(text: string) {
   try {
-    parseReleaseDate(text)
+    parseDate(text)
     return true
   } catch {
     return false

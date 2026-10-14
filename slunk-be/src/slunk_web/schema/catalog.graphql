@@ -16,6 +16,8 @@ extend type Query {
     label: ID
     "Releases the artist is a release artist on"
     artist: ID
+    "Every filter has to match: Genre is Rock and Score is 8 or more."
+    tags: [TagFilterInput!]! = []
   ): ReleasePage!
   release(id: ID!): Release
   "Releases with this title, ignoring case: an import checks it so a release isn't imported twice."

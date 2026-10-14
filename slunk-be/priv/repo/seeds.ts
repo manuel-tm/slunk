@@ -28,8 +28,10 @@ export async function seed(db: Kysely<DB>): Promise<void> {
     "Soundtrack",
   ])
   const medium = await upsertNamed(db, "release_media", ["CD"])
+  const genre = await upsertTag(db, "text_tags", "Genre", true)
+  const score = await upsertTag(db, "real_number_tags", "Score", false)
 
-  await insertRelease(db, {
+  const nwts = await insertRelease(db, {
     release: {
       title: "Nothing Was the Same",
       release_date: Date.UTC(2013, 8, 24) / 1000,
@@ -46,7 +48,7 @@ export async function seed(db: Kysely<DB>): Promise<void> {
     formats: [format["Album"]],
     media: [medium["CD"]],
   })
-  await insertRelease(db, {
+  const hsm = await insertRelease(db, {
     release: {
       title: "High School Musical (Soundtrack)",
       release_date: Date.UTC(2006, 0, 10) / 1000,
@@ -60,7 +62,23 @@ export async function seed(db: Kysely<DB>): Promise<void> {
     media: [medium["CD"]],
   })
 
-  console.log("Seeded 2 releases, 5 artists and 5 labels.")
+  await db
+    .insertInto("release_text_tags")
+    .values([
+      { release_id: nwts, tag_id: genre, value: "Hip Hop" },
+      { release_id: hsm, tag_id: genre, value: "Pop" },
+      { release_id: hsm, tag_id: genre, value: "Stage & Screen" },
+    ])
+    .execute()
+  await db
+    .insertInto("release_real_number_tags")
+    .values([
+      { release_id: nwts, tag_id: score, value: 9 },
+      { release_id: hsm, tag_id: score, value: 7.5 },
+    ])
+    .execute()
+
+  console.log("Seeded 2 releases, 5 artists, 5 labels and 2 tags.")
 }
 
 /** Inserts rows by name, returning their ids by name. */
@@ -96,6 +114,33 @@ async function upsertNamed(
   return Object.fromEntries(rows.map((row) => [row.name, row.id]))
 }
 
+/**
+ * A tag by name, created if it's missing. Without releases, no tag has
+ * values yet, so `multiple` can be set on an existing one.
+ */
+async function upsertTag(
+  db: Kysely<DB>,
+  table: "text_tags" | "real_number_tags",
+  name: string,
+  multiple: boolean
+): Promise<number> {
+  // Both tables have the same columns
+  const tags = table as "text_tags"
+  await db
+    .insertInto(tags)
+    .values({ name, multiple: multiple ? 1 : 0 })
+    .onConflict((oc) =>
+      oc.column("name").doUpdateSet({ multiple: multiple ? 1 : 0 })
+    )
+    .execute()
+  const { id } = await db
+    .selectFrom(tags)
+    .select("id")
+    .where("name", "=", name)
+    .executeTakeFirstOrThrow()
+  return id
+}
+
 async function insertRelease(
   db: Kysely<DB>,
   {
@@ -111,7 +156,7 @@ async function insertRelease(
     formats: number[]
     media: number[]
   }
-) {
+): Promise<number> {
   const { id } = await db
     .insertInto("releases")
     .values(release)
@@ -145,4 +190,5 @@ async function insertRelease(
     .insertInto("release_media_releases")
     .values(media.map((medium_id) => ({ medium_id, release_id: id })))
     .execute()
+  return id
 }
