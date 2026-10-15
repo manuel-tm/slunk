@@ -6,7 +6,7 @@ This folder documents Slunk as it's actually built, and it's kept up to date wit
 
 | Path | What's in it |
 |---|---|
-| [`design/`](design/) | Design docs: numbered plans used for planning and prompting, and a history of the project. Start with [1_introduction.md](design/1_introduction.md), the base design, which is complete: all its phases are built. Its index table lists every design doc and its status. |
+| [`design/`](design/) | Design docs: numbered plans used for planning and prompting, and an archive once they're built. [design/README.md](design/README.md) lists every design doc and its status. Start with [1_introduction.md](design/1_introduction.md), the base design. |
 | [`development/getting-started.md`](development/getting-started.md) | Setting up and running the project |
 | [`development/backend.md`](development/backend.md) | How the backend is built: the database, migrations, GraphQL, and its conventions |
 | [`development/frontend.md`](development/frontend.md) | How the frontend is built, and its conventions |
@@ -35,8 +35,8 @@ AGENTS.md        instructions for AI coding agents (CLAUDE.md points to it)
 
 Work flows from design to code to docs:
 
-1. **Design.** A topic is planned in `design/N_topic.md`. While it's being designed, it's edited freely.
-2. **Code.** The code is built from the design, phase by phase. While the phases are being built, the design's text stays as it was, and only appendices are added (step 4).
+1. **Design.** A topic is planned in `design/N_topic.md`, with the next free number, and gets a row in the index, [design/README.md](design/README.md). Its status line, right under its title, reads `> **Status: in design.**`. While it's being designed, it's edited freely.
+2. **Code.** The code is built from the design, phase by phase, and its status line changes to `> **Status: being built.**`. While the phases are being built, the design's text stays as it was, and only appendices are added (step 4).
 3. **Document.** When code lands, what it does is documented here, in the same change. Docs describe only what exists. Plans stay in the design docs, so nothing is written twice.
 4. **Record design changes as appendices.** When the code shows that a design has to change, while its phases are being built, the design text isn't rewritten:
    - an appendix is added at the end of that design doc;
@@ -60,19 +60,21 @@ And at the affected section:
 > Changed during implementation, see [Appendix A](#appendix-a-releases-store-their-disc-count).
 ```
 
-5. **Mark a design complete** when all its phases are built: a status line under its title, and its row in the index table at the top of `1_introduction.md`. For example:
+5. **Mark a design complete** when all its phases are built: a status line under its title, and its row in [design/README.md](design/README.md). For example:
 
    ```markdown
    > **Status: complete.** All of this design's phases (§8, phases 0 to 4) were built by 2026-10-15.
    ```
 
-6. **Leave it alone.** A finished design doc is never edited again, not even to add an appendix: it's a record of what was planned and built. A later change to what it describes is made in the code and documented here, like any other change. A change that needs planning gets a new design doc. The only exception is the index table at the top of `1_introduction.md`, which keeps a row for every design doc and its status.
+6. **Leave it alone.** A finished design doc is never edited again, not even to add an appendix: it's a record of what was planned and built. A later change to what it describes is made in the code and documented here, like any other change. A change that needs planning gets a new design doc.
+
+A design doc is only ever edited by the work on its own topic. Every other design doc is read-only, whatever its status: it's read for context, but never edited, not even to fix a typo, a stale name or a broken link.
 
 ### Citing design docs
 
 Each design doc numbers its own sections and its own phases from 0, so a citation names its document:
 - **The base design** is cited without a name: "design §4.3", "phase 2" or "Appendix A" mean [1_introduction.md](design/1_introduction.md). The code and these docs cite it that way.
-- **Any later design doc** is cited by its file name: "2_external_libraries.md §3", "phase 1 of 2_external_libraries.md".
+- **Any later design doc** is cited by its file name: "2_credits.md §3", "phase 0 of 2_credits.md".
 
 ### Keeping docs up to date
 
@@ -80,4 +82,4 @@ The docs outside `design/` must always match the code.
 - **Update them in the same change as the code.** Any change that affects something documented updates the docs with it: requirements and setup, commands and scripts, project structure, conventions, and behavior.
 - **A doc that no longer matches the code is a bug.** Fix it when you find it, even if your change didn't cause it.
 
-`design/` is the exception. A design doc is only edited while its design is in progress: freely while it's being designed, and through appendices while its phases are being built. Once it's complete, it isn't edited again.
+`design/` is the exception. A design doc is only edited while its design is in progress: freely while it's being designed, and through appendices while its phases are being built. Once it's complete, it isn't edited again. Its index, [design/README.md](design/README.md), isn't a design doc: it's updated whenever a design doc is added or changes status.
