@@ -3,7 +3,12 @@ import { useState } from "react"
 import { useNavigate, useParams, useSearchParams } from "react-router"
 
 import { ButtonLink } from "@/components/button-link"
-import { type CreditRow, CreditsEditor } from "@/components/credits-editor"
+import {
+  type CreditLine,
+  CreditsEditor,
+  creditsInput,
+  creditsValid,
+} from "@/components/credits-editor"
 import {
   type FileLinkRow,
   FileLinksEditor,
@@ -65,11 +70,8 @@ const TrackFormQuery = graphql(`
         name
       }
       credits {
-        role {
-          id
-          name
-        }
-        artist {
+        role
+        artists {
           id
           name
         }
@@ -128,7 +130,7 @@ type Values = {
   title: string
   artists: Option[]
   features: Option[]
-  credits: CreditRow[]
+  credits: CreditLine[]
   links: FileLinkRow[]
   tags: TagRow[]
 }
@@ -241,10 +243,7 @@ function Form({ id, initial }: { id?: string; initial: Values }) {
           title: values.title,
           artistIds: values.artists.map((a) => a.id),
           featureIds: values.features.map((a) => a.id),
-          credits: values.credits.map((c) => ({
-            roleId: c.role.id,
-            artistId: c.artist.id,
-          })),
+          credits: creditsInput(values.credits),
           files: fileLinksInput(values.links),
           tags: tagValuesInput(values.tags),
         }
@@ -365,7 +364,8 @@ function Form({ id, initial }: { id?: string; initial: Values }) {
               created.loading ||
               updated.loading ||
               !values.release ||
-              !values.file
+              !values.file ||
+              !creditsValid(values.credits)
             }
           >
             Save

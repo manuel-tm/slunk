@@ -1,6 +1,6 @@
 # Credits with free-text roles
 
-> **Status: in design.** Nothing in it is built yet.
+> **Status: complete.** This design's one phase (§8, phase 0) was built by 2026-10-15. It's now an archive and isn't edited again. A later change to credits goes in the code and the rest of `docs/`.
 
 This document changes how credits are stored. It builds on the base design ([1_introduction.md](1_introduction.md)) and replaces its credit roles: design §4.3 "Artists and credits", the credit tables in design §4.4, and the credit parts of design §7. The rest of how credits work stays the same: they're kept apart from release and track artists, and they're shown under each track and on the release page.
 

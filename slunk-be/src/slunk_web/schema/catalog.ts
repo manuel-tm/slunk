@@ -7,7 +7,6 @@ import { tagFilters, tagValues } from "./tagging.ts"
 const LIST_TYPES = {
   release_formats: "ReleaseFormat",
   release_media: "ReleaseMedium",
-  credit_roles: "CreditRole",
 } as const
 
 /** A GraphQL id, as the database's number. */
@@ -31,8 +30,8 @@ const fileLinks = (
   }[]
 ): FileLinkInput[] =>
   links.map((link) => ({ ...fileRef(link), note: link.note }))
-const credits = (list: { artistId: string; roleId: string }[]) =>
-  list.map((c) => ({ artistId: n(c.artistId), roleId: n(c.roleId) }))
+const credits = (list: { role: string; artistIds: string[] }[]) =>
+  list.map((c) => ({ role: c.role, artistIds: ids(c.artistIds) }))
 
 /** Pairs tag names with the artists that have exactly those names. */
 async function suggestArtists(catalog: Catalog, names: string[]) {
@@ -46,7 +45,7 @@ async function suggestArtists(catalog: Catalog, names: string[]) {
   }))
 }
 
-/** `uses` and `blockers` for any of the three list types. */
+/** `uses` and `blockers` for either list type. */
 const listItemFields = {
   uses: (
     item: { kind: ListKind; id: number },
@@ -98,6 +97,7 @@ export const catalogResolvers: Resolvers = {
       catalog.listItems(kind, args),
     listItem: (_parent, { kind, id }, { catalog }) =>
       catalog.getListItem(kind, n(id)),
+    creditRoles: (_parent, { q }, { catalog }) => catalog.creditRoles(q),
     catalogTotals: (_parent, _args, { catalog }) => catalog.totals(),
     releaseSuggestion: async (_parent, { folder }, { catalog }) => {
       const { artistNames, ...suggestion } =
@@ -236,8 +236,6 @@ export const catalogResolvers: Resolvers = {
   },
 
   ArtistCredit: {
-    role: (credit, _args, { loaders }) =>
-      loadRequired(loaders.role, credit.roleId),
     release: (credit, _args, { loaders }) =>
       loadRequired(loaders.release, credit.releaseId),
     track: (credit, _args, { loaders }) =>
@@ -328,10 +326,8 @@ export const catalogResolvers: Resolvers = {
   },
 
   Credit: {
-    artist: (credit, _args, { loaders }) =>
-      loadRequired(loaders.artist, credit.artistId),
-    role: (credit, _args, { loaders }) =>
-      loadRequired(loaders.role, credit.roleId),
+    artists: (credit, _args, { loaders }) =>
+      loadAll(loaders.artist, credit.artistIds),
   },
 
   ListItem: {
@@ -339,7 +335,6 @@ export const catalogResolvers: Resolvers = {
   },
   ReleaseFormat: listItemFields,
   ReleaseMedium: listItemFields,
-  CreditRole: listItemFields,
 
   FileLink: {
     file: (link, _args, { loaders }) => loadRequired(loaders.file, link.fileId),
@@ -376,7 +371,7 @@ function trackInput(input: {
   title: string
   artistIds: string[]
   featureIds: string[]
-  credits: { artistId: string; roleId: string }[]
+  credits: { role: string; artistIds: string[] }[]
   files: {
     fileId?: string | null
     path?: string | null

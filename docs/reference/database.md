@@ -9,8 +9,9 @@ This is the schema as built, by these migrations in `slunk-be/priv/repo/migratio
 | `20261011141955_create_baseline` | Every table, index and trigger, except those below |
 | `20261013060918_add_tag_value_rules` | The triggers that check date and number tag values |
 | `20261014052413_add_track_tags` | Tag values on tracks, and the `<type>_tags_multiple_off` triggers that check them too |
+| `20261015192802_free_text_credit_roles` | Credit lines: `release_credits` and `track_credits` again, now with a free-text `role`, and `artists_release_credits` and `artists_track_credits`. It drops `credit_roles` and the old credits. |
 
-The reasoning behind it is in [design §4](../design/1_introduction.md#4-data-model), and its appendices [A](../design/1_introduction.md#appendix-a-more-integrity-rules-in-the-database) and [D](../design/1_introduction.md#appendix-d-tag-values-are-checked-in-the-database). Every column's type is in `slunk-be/src/repo/db_types.ts`, which is generated from the database.
+The reasoning behind it is in [design §4](../design/1_introduction.md#4-data-model), and its appendices [A](../design/1_introduction.md#appendix-a-more-integrity-rules-in-the-database) and [D](../design/1_introduction.md#appendix-d-tag-values-are-checked-in-the-database). Credits follow [2_credits.md §4](../design/2_credits.md#4-data-model) instead. Every column's type is in `slunk-be/src/repo/db_types.ts`, which is generated from the database.
 
 How to connect, migrate and seed: [development/backend.md](../development/backend.md#the-database).
 
@@ -35,8 +36,8 @@ How to connect, migrate and seed: [development/backend.md](../development/backen
 | `artists_releases` | Who a release is by, with `position` |
 | `artists_tracks` | Who performs a track, with `featured` and `position` |
 | `labels_releases` | A release's labels, with `position` |
-| `credit_roles` | The roles credits use, a list the user manages |
-| `release_credits`, `track_credits` | An artist with a role on a release or track, with `position` |
+| `release_credits`, `track_credits` | Credit lines: a `role` as printed on a release or track ("Mixed By"), with `position`, the line's order |
+| `artists_release_credits`, `artists_track_credits` | The artists on each credit line, with `position`, their order on the line, from 0 |
 | `release_formats`, `release_media` | Lists the user manages |
 | `release_formats_releases`, `release_media_releases` | A release's formats and media |
 | `files_releases`, `artists_files`, `files_tracks` | File links, each with an optional `note` |
@@ -55,13 +56,14 @@ How to connect, migrate and seed: [development/backend.md](../development/backen
   - `size_bytes >= 0`.
   - `sha256` is 64 lowercase hex characters.
 - **Text:** these values are non-empty, with no leading or trailing spaces:
-  - names: of artists, labels, credit roles, formats, media and tag definitions;
+  - names: of artists, labels, formats, media and tag definitions;
   - titles: of releases and tracks;
-  - `catalog_number`, `release_text_tags.value`, `track_text_tags.value` and file link notes.
+  - credit lines' `role`, `catalog_number`, `release_text_tags.value`, `track_text_tags.value` and file link notes.
 
   A nullable one (`catalog_number`, `note`) may also be NULL.
 - **Unique ignoring case** (`COLLATE NOCASE`):
-  - names of credit roles, formats, media and tag definitions;
+  - names of formats, media and tag definitions;
+  - a credit line's role, per release or track;
   - a text tag's value per release or track, and tag.
 
   `catalog_number` also compares ignoring case, but isn't unique. Artist names, label names and release titles aren't unique; their indexes ignore case, for search and sorting.
@@ -73,7 +75,7 @@ How to connect, migrate and seed: [development/backend.md](../development/backen
   - `(release_id, cd_number, track_number)` is unique;
   - `file_id` is unique: a file is the audio of at most one track;
   - `track_number > 0`, `cd_number > 0`, `duration_ms >= 0`.
-- **Links:** an artist, label, format, medium or file appears at most once per release or track. A credit (release or track, artist, role) appears once. `position >= 0`.
+- **Links:** an artist, label, format, medium or file appears at most once per release or track. An artist appears once per credit line, and two artists on a line can't share a `position`. `position >= 0`.
 - **Tag values**, on releases and tracks alike:
   - `(release_id, tag_id, value)` and `(track_id, tag_id, value)` are unique;
   - a date tag's value is a day, at midnight UTC, and a number tag's value is finite (triggers below).
@@ -99,6 +101,16 @@ Each trigger aborts the statement with the error shown.
 
 `<type>` is `text`, `real_number` or `date`, and `<owner>` is `release` or `track`.
 
+### Credit lines
+
+Every credit line has an artist. A line is inserted before its artists, so a deferred foreign key checks it at commit:
+- `release_credits` and `track_credits` have `first_artist_position`, a generated column that's always 0.
+- `(id, first_artist_position)` references the artist table's `(credit_id, position)`, `DEFERRABLE INITIALLY DEFERRED`. So the line has an artist at position 0, and `(credit_id, position)` is unique.
+- A transaction that leaves a line without an artist at position 0 fails at commit with `FOREIGN KEY constraint failed`: a line inserted with no artists, a line whose artists were all removed, or one whose artists start at 1.
+- Outside a transaction, each statement commits on its own, so a line can only be added in a transaction, together with its artists.
+- Deleting a line, or its release or track, deletes its artists too.
+- Migrations run with foreign keys off, and the runner's `foreign_key_check` reports a line without artists.
+
 ### Deletes
 
 Foreign keys decide what a delete does.
@@ -108,17 +120,17 @@ Foreign keys decide what a delete does.
   - a release with tracks;
   - an artist who is a release or track artist, or is credited;
   - a label on a release;
-  - a credit role, format, medium or tag definition in use (a tag is in use on a release or a track).
+  - a format, medium or tag definition in use (a tag is in use on a release or a track).
 - **CASCADE:** deleting a row also deletes the link rows that describe it:
-  - a release: its artists, labels, formats, media, credits, file links and tag values;
-  - a track: its artists, credits, file links and tag values;
+  - a release: its artists, labels, formats, media, credit lines, file links and tag values;
+  - a track: its artists, credit lines, file links and tag values;
+  - a credit line: its artists;
   - an artist: its file links.
 
 ## Starter rows
 
 The baseline migration adds these rows. Nothing depends on them, so the user can rename or delete them.
 
-- `credit_roles`: composer, conductor, producer, remixer, writer
 - `release_formats`: Album, Compilation, EP, Live, LP, Mixtape, Single, Soundtrack
 - `release_media`: Cassette, CD, Digital, Vinyl
 

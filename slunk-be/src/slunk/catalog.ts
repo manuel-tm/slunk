@@ -23,7 +23,8 @@ export type FileRef = { fileId?: number | null; path?: string | null }
 
 export type FileLinkInput = FileRef & { note?: string | null }
 
-export type CreditInput = { artistId: number; roleId: number }
+/** A credit line: a role as printed, and its artists in order. */
+export type CreditInput = { role: string; artistIds: number[] }
 
 export type ReleaseInput = {
   title: string
@@ -64,8 +65,10 @@ export type TrackInput = {
 const LIST_NAMES: Record<ListKind, string> = {
   release_formats: "format",
   release_media: "medium",
-  credit_roles: "credit role",
 }
+
+// How many roles the credits editor suggests
+const ROLE_SUGGESTIONS = 20
 
 // Moves track numbers clear of the ones being saved, so renumbering a
 // release never trips its unique (release, disc, number) index midway
@@ -194,7 +197,7 @@ export function createCatalog({
   }
 
   return {
-    // Lists: release formats, release media, credit roles
+    // Lists: release formats, release media
 
     listItems: (kind: ListKind, args: ListArgs) =>
       store.lists.list(kind, {
@@ -215,17 +218,13 @@ export function createCatalog({
     },
     async listItemBlockers(kind: ListKind, id: number) {
       const uses = await store.lists.uses(kind, id)
-      if (uses === 0) return []
-      return kind === "credit_roles"
-        ? [`Used by ${count(uses, "credit")}`]
-        : [`Used by ${count(uses, "release")}`]
+      return uses === 0 ? [] : [`Used by ${count(uses, "release")}`]
     },
     async deleteListItem(kind: ListKind, id: number) {
       const uses = await store.lists.uses(kind, id)
       if (uses > 0) {
-        const what = kind === "credit_roles" ? "credit" : "release"
         throw new Error(
-          `The ${LIST_NAMES[kind]} is used by ${count(uses, what)}`
+          `The ${LIST_NAMES[kind]} is used by ${count(uses, "release")}`
         )
       }
       await store.lists.delete(kind, id)
@@ -490,12 +489,12 @@ export function createCatalog({
         const tracks = new Set(
           ((await tx.tracks.ofReleases([id])).get(id) ?? []).map((t) => t.id)
         )
-        await tx.credits.set("release", id, uniqueCredits(input.credits))
+        await tx.credits.set("release", id, creditLines(input.credits))
         for (const { trackId, credits } of input.tracks) {
           if (!tracks.has(trackId)) {
             throw new Error(`Track ${trackId} isn't on this release`)
           }
-          await tx.credits.set("track", trackId, uniqueCredits(credits))
+          await tx.credits.set("track", trackId, creditLines(credits))
         }
         return release
       })
@@ -561,7 +560,7 @@ export function createCatalog({
           track.id,
           trackArtists(input.artistIds, input.featureIds)
         )
-        await tx.credits.set("track", track.id, uniqueCredits(input.credits))
+        await tx.credits.set("track", track.id, creditLines(input.credits))
         await setFileLinks(tx, "track", track.id, input.files, registered)
         if (input.tags) {
           await tagging.setTagsWith(tx, "track", track.id, input.tags)
@@ -594,7 +593,7 @@ export function createCatalog({
           id,
           trackArtists(input.artistIds, input.featureIds)
         )
-        await tx.credits.set("track", id, uniqueCredits(input.credits))
+        await tx.credits.set("track", id, creditLines(input.credits))
         await setFileLinks(tx, "track", id, input.files, registered)
         if (input.tags) await tagging.setTagsWith(tx, "track", id, input.tags)
         return track
@@ -637,6 +636,9 @@ export function createCatalog({
 
     creditsOf: (owner: CreditOwner, ids: readonly number[]) =>
       store.credits.of(owner, ids),
+    /** Roles in use, for the credits editor's suggestions. */
+    creditRoles: (q?: string | null) =>
+      store.credits.roles({ search: searchOf(q), limit: ROLE_SUGGESTIONS }),
     totals: () => store.stats.totals(),
 
     // Import suggestions (design §7.9), from embedded tags or else names
@@ -771,14 +773,33 @@ function unique(ids: number[]): number[] {
   return [...new Set(ids)]
 }
 
-function uniqueCredits(credits: CreditInput[]): CreditInput[] {
-  const seen = new Set<string>()
-  return credits.filter(({ artistId, roleId }) => {
-    const key = `${artistId}:${roleId}`
-    if (seen.has(key)) return false
-    seen.add(key)
-    return true
+/**
+ * Credit lines as they're saved (2_credits.md §6): roles trimmed, and an
+ * artist given twice on a line kept once. Refuses an empty role, a line with
+ * no artists, and two lines with the same role, ignoring case.
+ */
+function creditLines(credits: CreditInput[]): CreditInput[] {
+  const roles = new Set<string>()
+  return credits.map(({ role, artistIds }) => {
+    const trimmed = role.trim()
+    if (!trimmed) throw new Error("A credit needs a role")
+    if (artistIds.length === 0) {
+      throw new Error(`The ${trimmed} credit needs an artist`)
+    }
+    const key = nocaseKey(trimmed)
+    if (roles.has(key)) {
+      throw new Error(
+        `Two credits have the role ${trimmed}, ignoring case. Put their artists on one line.`
+      )
+    }
+    roles.add(key)
+    return { role: trimmed, artistIds: unique(artistIds) }
   })
+}
+
+/** Text compared ignoring ASCII case, like SQLite's NOCASE. */
+function nocaseKey(text: string): string {
+  return text.replace(/[A-Z]/g, (c) => c.toLowerCase())
 }
 
 function count(n: number, noun: string): string {

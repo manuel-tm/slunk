@@ -24,11 +24,25 @@ export interface ArtistsFiles {
   note: string | null;
 }
 
+export interface ArtistsReleaseCredits {
+  artist_id: number;
+  credit_id: number;
+  id: Generated<number>;
+  position: number;
+}
+
 export interface ArtistsReleases {
   artist_id: number;
   id: Generated<number>;
   position: number;
   release_id: number;
+}
+
+export interface ArtistsTrackCredits {
+  artist_id: number;
+  credit_id: number;
+  id: Generated<number>;
+  position: number;
 }
 
 export interface ArtistsTracks {
@@ -37,11 +51,6 @@ export interface ArtistsTracks {
   id: Generated<number>;
   position: number;
   track_id: number;
-}
-
-export interface CreditRoles {
-  id: Generated<number>;
-  name: string;
 }
 
 export interface DateTags {
@@ -103,11 +112,10 @@ export interface RealNumberTags {
 }
 
 export interface ReleaseCredits {
-  artist_id: number;
   id: Generated<number>;
   position: number;
   release_id: number;
-  role_id: number;
+  role: string;
 }
 
 export interface ReleaseDateTags {
@@ -172,10 +180,9 @@ export interface TextTags {
 }
 
 export interface TrackCredits {
-  artist_id: number;
   id: Generated<number>;
   position: number;
-  role_id: number;
+  role: string;
   track_id: number;
 }
 
@@ -215,9 +222,10 @@ export interface TrackTextTags {
 export interface DB {
   artists: Artists;
   artists_files: ArtistsFiles;
+  artists_release_credits: ArtistsReleaseCredits;
   artists_releases: ArtistsReleases;
+  artists_track_credits: ArtistsTrackCredits;
   artists_tracks: ArtistsTracks;
-  credit_roles: CreditRoles;
   date_tags: DateTags;
   files: Files;
   files_releases: FilesReleases;

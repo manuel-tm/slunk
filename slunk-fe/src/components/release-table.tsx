@@ -178,7 +178,7 @@ export function ReleaseTable({
                 {column === "formats" && names(release.formats)}
                 {column === "media" && names(release.media)}
                 {column === "labels" && release.labels && (
-                  <Names items={release.labels} to={labelUrl} commas />
+                  <Names items={release.labels} to={labelUrl} />
                 )}
                 {column === "catalogNumber" && release.catalogNumber}
                 {column === "variousArtists" &&

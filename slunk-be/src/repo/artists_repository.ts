@@ -19,8 +19,9 @@ export function createArtistsRepository(db: Kysely<DB>): ArtistsRepository {
         select
           (select count(*) from artists_releases where artist_id = ${id}) as releases,
           (select count(*) from artists_tracks where artist_id = ${id}) as tracks,
-          (select count(*) from release_credits where artist_id = ${id})
-            + (select count(*) from track_credits where artist_id = ${id}) as credits
+          (select count(*) from artists_release_credits where artist_id = ${id})
+            + (select count(*) from artists_track_credits where artist_id = ${id})
+            as credits
       `.execute(db)
       return rows[0]
     },
@@ -39,18 +40,23 @@ export function createArtistsRepository(db: Kysely<DB>): ArtistsRepository {
       return rows
     },
 
+    // A row per line the artist is on
     async credits(id) {
       const { rows } = await sql<{
-        roleId: number
+        role: string
         releaseId: number
         trackId: number | null
       }>`
-        select role_id as roleId, release_id as releaseId, null as trackId
-        from release_credits where artist_id = ${id}
+        select l.role, l.release_id as releaseId, null as trackId
+        from artists_release_credits a
+        join release_credits l on l.id = a.credit_id
+        where a.artist_id = ${id}
         union all
-        select c.role_id, t.release_id, t.id
-        from track_credits c join tracks t on t.id = c.track_id
-        where c.artist_id = ${id}
+        select l.role, t.release_id, t.id
+        from artists_track_credits a
+        join track_credits l on l.id = a.credit_id
+        join tracks t on t.id = l.track_id
+        where a.artist_id = ${id}
       `.execute(db)
       return rows
     },

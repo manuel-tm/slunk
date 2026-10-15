@@ -34,11 +34,8 @@ const TrackQuery = graphql(`
         name
       }
       credits {
-        role {
-          id
-          name
-        }
-        artist {
+        role
+        artists {
           id
           name
         }

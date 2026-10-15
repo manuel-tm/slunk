@@ -32,7 +32,6 @@ const config: CodegenConfig = {
           ListItem: `${CATALOG}#ListItem`,
           ReleaseFormat: `${CATALOG}#ListItem`,
           ReleaseMedium: `${CATALOG}#ListItem`,
-          CreditRole: `${CATALOG}#ListItem`,
           Appearance: `${CATALOG}#Appearance`,
           ArtistCredit: `${CATALOG}#ArtistCredit`,
           FormatCount: `${CATALOG}#FormatCount`,

@@ -35,7 +35,7 @@ const ListItemsQuery = graphql(`
   }
 `)
 
-/** `/release-formats`, `/release-media` and `/credit-roles` */
+/** `/release-formats` and `/release-media` */
 export function ListItemList({ kind }: { kind: ListKind }) {
   const list = useListParams()
   const { path, title } = LISTS[kind]
@@ -70,9 +70,7 @@ export function ListItemList({ kind }: { kind: ListKind }) {
             >
               Name
             </SortableHead>
-            <TableHead className="text-right">
-              {kind === "credit_roles" ? "Credits" : "Releases"}
-            </TableHead>
+            <TableHead className="text-right">Releases</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>

@@ -42,9 +42,11 @@ extend type Query {
     tags: [TagFilterInput!]! = []
   ): TrackPage!
   track(id: ID!): Track
-  "Release formats, release media or credit roles."
+  "Release formats or release media."
   listItems(kind: ListKind!, page: Int! = 1, perPage: Int! = 50, "`name`, or `id`, with `-` for descending" sort: String, q: String): ListItemPage!
   listItem(kind: ListKind!, id: ID!): ListItem
+  "Roles in use on releases and tracks, for suggestions: the first 20 containing `q`, ignoring case, the most used first. Each spelling is its own suggestion, so \"Mixed By\" and \"Mixed by\" are both offered."
+  creditRoles(q: String): [String!]!
   catalogTotals: CatalogTotals!
   "What a folder suggests for a new release, from its files' embedded tags, or else its name."
   releaseSuggestion(folder: String!): ReleaseSuggestion!
@@ -122,8 +124,10 @@ type Appearance {
   tracks: [Track!]!
 }
 
+"A credit line the artist is on."
 type ArtistCredit {
-  role: CreditRole!
+  "As printed"
+  role: String!
   release: Release!
   "Null for a credit on the release itself"
   track: Track
@@ -194,24 +198,23 @@ type Track {
   files: [FileLink!]!
 }
 
-"An artist's role on a release or track. It has no id: release and track credits live in different tables, so their ids would collide."
+"A credit line: a role, as printed, and the artists who hold it, in order. It has no id: release and track credits live in different tables, so their ids would collide."
 type Credit {
-  artist: Artist!
-  role: CreditRole!
+  role: String!
+  artists: [Artist!]!
 }
 
 enum ListKind {
   release_formats
   release_media
-  credit_roles
 }
 
-"A row of a list the user manages: a release format, release medium or credit role."
+"A row of a list the user manages: a release format or release medium."
 interface ListItem {
   id: ID!
   kind: ListKind!
   name: String!
-  "Releases with the format or medium, or credits with the role."
+  "Releases with the format or medium."
   uses: Int!
   blockers: [String!]!
 }
@@ -225,14 +228,6 @@ type ReleaseFormat implements ListItem {
 }
 
 type ReleaseMedium implements ListItem {
-  id: ID!
-  kind: ListKind!
-  name: String!
-  uses: Int!
-  blockers: [String!]!
-}
-
-type CreditRole implements ListItem {
   id: ID!
   kind: ListKind!
   name: String!
@@ -365,8 +360,10 @@ input ReleaseFilesInput {
 }
 
 input CreditInput {
-  artistId: ID!
-  roleId: ID!
+  "As printed. Trimmed, and unique on its release or track, ignoring case."
+  role: String!
+  "At least one, in display order. One given twice is kept once."
+  artistIds: [ID!]!
 }
 
 input TrackCreditsInput {

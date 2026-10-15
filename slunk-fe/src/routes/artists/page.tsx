@@ -28,7 +28,7 @@ import {
 import { graphql } from "@/gql"
 import type { ArtistHeaderFragment } from "@/gql/graphql"
 import { useListParams } from "@/hooks/use-list-params"
-import { formatReleased, formatRole } from "@/lib/format"
+import { formatReleased, roleKey } from "@/lib/format"
 import { NotFound } from "@/routes/not-found"
 
 graphql(`
@@ -389,10 +389,7 @@ const ArtistCreditsQuery = graphql(`
     artist(id: $id) {
       ...ArtistHeader
       credits {
-        role {
-          id
-          name
-        }
+        role
         release {
           id
           title
@@ -407,14 +404,17 @@ const ArtistCreditsQuery = graphql(`
   }
 `)
 
-/** `/artists/:id/credits`: credits on releases and tracks, by role. */
+/**
+ * `/artists/:id/credits`: the credit lines the artist is on, grouped by role
+ * ignoring case, so "Mixed By" and "Mixed by" share a group.
+ */
 export function ArtistCredits() {
   const { id = "" } = useParams()
   const { data, error } = useQuery(ArtistCreditsQuery, { variables: { id } })
   const artist = data?.artist
   const credits = [...(artist?.credits ?? [])].sort(
     (a, b) =>
-      a.role.name.localeCompare(b.role.name) ||
+      roleKey(a.role).localeCompare(roleKey(b.role)) ||
       (a.release.released ?? "9999").localeCompare(b.release.released ?? "9999")
   )
 
@@ -434,8 +434,10 @@ export function ArtistCredits() {
             {credits.map((credit, index) => (
               <TableRow key={index}>
                 <TableCell>
-                  {credit.role.name !== credits[index - 1]?.role.name &&
-                    formatRole(credit.role.name)}
+                  {(index === 0 ||
+                    roleKey(credit.role) !==
+                      roleKey(credits[index - 1].role)) &&
+                    credit.role}
                 </TableCell>
                 <TableCell>
                   <Link

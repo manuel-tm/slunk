@@ -5,52 +5,103 @@ import type {
 } from "../slunk/catalog/repository.ts"
 import type { FileLinksRepository } from "../slunk/media/repository.ts"
 import type { DB } from "./db_types.ts"
-import { chunks, groupBy } from "./helpers.ts"
+import { chunks, contains, groupBy } from "./helpers.ts"
 
+// Each owner's credit lines, and the artists on each line
 const CREDITS = {
-  release: { table: "release_credits", column: "release_id" },
-  track: { table: "track_credits", column: "track_id" },
+  release: {
+    lines: "release_credits",
+    artists: "artists_release_credits",
+    column: "release_id",
+  },
+  track: {
+    lines: "track_credits",
+    artists: "artists_track_credits",
+    column: "track_id",
+  },
 } as const
 
 export function createCreditsRepository(db: Kysely<DB>): CreditsRepository {
   return {
     async of(owner, ids) {
-      const { table, column } = CREDITS[owner]
+      const { lines, artists, column } = CREDITS[owner]
       const rows: {
         ownerId: number
-        id: number
+        lineId: number
+        role: string
         artistId: number
-        roleId: number
       }[] = []
       for (const chunk of chunks(ids)) {
         const { rows: found } = await sql<(typeof rows)[number]>`
-          select ${sql.ref(column)} as ownerId, id, artist_id as artistId,
-            role_id as roleId
-          from ${sql.table(table)}
-          where ${sql.ref(column)} in (${sql.join(chunk)})
-          order by ${sql.ref(column)}, position
+          select l.${sql.ref(column)} as ownerId, l.id as lineId, l.role,
+            a.artist_id as artistId
+          from ${sql.table(lines)} l
+          join ${sql.table(artists)} a on a.credit_id = l.id
+          where l.${sql.ref(column)} in (${sql.join(chunk)})
+          order by l.${sql.ref(column)}, l.position, a.position
         `.execute(db)
         rows.push(...found)
       }
-      return groupBy(
-        rows,
-        (row) => row.ownerId,
-        ({ id, artistId, roleId }) => ({ id, artistId, roleId })
+      return new Map(
+        [
+          ...groupBy(
+            rows,
+            (row) => row.ownerId,
+            (row) => row
+          ),
+        ].map(([ownerId, ownerRows]) => [
+          ownerId,
+          [
+            ...groupBy(
+              ownerRows,
+              (row) => row.lineId,
+              (row) => row
+            ),
+          ].map(([, line]) => ({
+            role: line[0].role,
+            artistIds: line.map((row) => row.artistId),
+          })),
+        ])
       )
     },
 
     async set(owner, id, credits) {
-      const { table, column } = CREDITS[owner]
+      const { lines, artists, column } = CREDITS[owner]
+      // Each line's artists go with it (CASCADE)
       await sql`
-        delete from ${sql.table(table)} where ${sql.ref(column)} = ${id}
+        delete from ${sql.table(lines)} where ${sql.ref(column)} = ${id}
       `.execute(db)
-      for (const [position, { artistId, roleId }] of credits.entries()) {
-        await sql`
-          insert into ${sql.table(table)}
-            (${sql.ref(column)}, artist_id, role_id, position)
-          values (${id}, ${artistId}, ${roleId}, ${position})
+      for (const [position, { role, artistIds }] of credits.entries()) {
+        const { rows } = await sql<{ id: number }>`
+          insert into ${sql.table(lines)} (${sql.ref(column)}, role, position)
+          values (${id}, ${role}, ${position})
+          returning id
         `.execute(db)
+        // Numbered from 0: the line's key needs an artist at position 0
+        for (const [place, artistId] of artistIds.entries()) {
+          await sql`
+            insert into ${sql.table(artists)} (credit_id, artist_id, position)
+            values (${rows[0].id}, ${artistId}, ${place})
+          `.execute(db)
+        }
       }
+    },
+
+    async roles({ search, limit }) {
+      const where = search ? sql`where ${contains("role", search)}` : sql``
+      // `role` ignores case, so grouping by its exact text keeps each
+      // spelling apart: "Mixed By" and "Mixed by" are two suggestions
+      const { rows } = await sql<{ role: string }>`
+        select role from (
+          select role from release_credits ${where}
+          union all
+          select role from track_credits ${where}
+        )
+        group by role collate binary
+        order by count(*) desc, role collate nocase, role collate binary
+        limit ${limit}
+      `.execute(db)
+      return rows.map((row) => row.role)
     },
   }
 }

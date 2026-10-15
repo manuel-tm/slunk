@@ -28,7 +28,7 @@ const DeleteListItem = graphql(`
   }
 `)
 
-/** A format, medium or credit role, and how much it's used (design §7.8). */
+/** A format or medium, and how many releases use it (design §7.8). */
 export function ListItemRead({ kind }: { kind: ListKind }) {
   const { id = "" } = useParams()
   const { path, title, one, releaseFilter } = LISTS[kind]
@@ -37,7 +37,6 @@ export function ListItemRead({ kind }: { kind: ListKind }) {
 
   if (data && !data.listItem) return <NotFound />
   const item = data?.listItem
-  const noun = kind === "credit_roles" ? "credit" : "release"
 
   return (
     <>
@@ -70,8 +69,8 @@ export function ListItemRead({ kind }: { kind: ListKind }) {
           <>
             <h1 className="font-heading text-2xl font-semibold">{item.name}</h1>
             <p className="text-muted-foreground">
-              Used by {item.uses} {item.uses === 1 ? noun : `${noun}s`}
-              {releaseFilter && item.uses > 0 && (
+              Used by {item.uses} {item.uses === 1 ? "release" : "releases"}
+              {item.uses > 0 && (
                 <>
                   {" · "}
                   <Link

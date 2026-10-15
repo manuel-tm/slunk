@@ -1,6 +1,6 @@
 import type { ListKind } from "@/gql/graphql"
 
-/** The three lists the user manages, which share their pages (design §7.8). */
+/** The two lists the user manages, which share their pages (design §7.8). */
 export const LISTS: Record<
   ListKind,
   {
@@ -8,8 +8,8 @@ export const LISTS: Record<
     path: string
     title: string
     one: string
-    /** The release list's filter for it, or null for credit roles */
-    releaseFilter: "format" | "medium" | null
+    /** The release list's filter for it */
+    releaseFilter: "format" | "medium"
   }
 > = {
   release_formats: {
@@ -25,12 +25,5 @@ export const LISTS: Record<
     title: "Release media",
     one: "medium",
     releaseFilter: "medium",
-  },
-  credit_roles: {
-    kind: "credit_roles",
-    path: "/credit-roles",
-    title: "Credit roles",
-    one: "credit role",
-    releaseFilter: null,
   },
 }

@@ -19,14 +19,18 @@ const MESSAGES: [RegExp, string][] = [
     "A file is already registered at that path",
   ],
   [
-    /UNIQUE constraint failed: (release_formats|release_media|credit_roles|\w+_tags)\.name/,
+    /UNIQUE constraint failed: (release_formats|release_media|\w+_tags)\.name/,
     "There's already one with that name, ignoring case",
+  ],
+  [
+    /UNIQUE constraint failed: \w+_credits\.\w+_id, \w+_credits\.role/,
+    "Two credits have the same role, ignoring case",
   ],
   [
     /UNIQUE constraint failed: \w+\.\w+_id, \w+\.\w+_id/,
     "Each one can only be listed once",
   ],
-  [/CHECK constraint failed: (name|title)$/, "The $1 can't be empty"],
+  [/CHECK constraint failed: (name|title|role)$/, "The $1 can't be empty"],
   [
     /CHECK constraint failed: (track_number|cd_number) > 0/,
     "Disc and track numbers start at 1",

@@ -114,10 +114,9 @@ const CreateListItemOption = graphql(`
 export const LIST_NOUNS: Record<ListKind, string> = {
   release_formats: "format",
   release_media: "medium",
-  credit_roles: "role",
 }
 
-/** A release format, release medium or credit role. */
+/** A release format or release medium. */
 export function ListItemPicker({
   kind,
   ...props
@@ -140,6 +139,19 @@ export function ListItemPicker({
       }
     />
   )
+}
+
+const CreditRoleOptions = graphql(`
+  query CreditRoleOptions($q: String) {
+    creditRoles(q: $q)
+  }
+`)
+
+/** Roles in use, the most used first, matching what was typed. */
+export function useCreditRoles(query: string, skip = false) {
+  const q = useDebounced(query)
+  const { data } = useQuery(CreditRoleOptions, { variables: { q }, skip })
+  return data?.creditRoles ?? []
 }
 
 const ReleaseOptions = graphql(`

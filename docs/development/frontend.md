@@ -2,11 +2,11 @@
 
 > Keep this page up to date: any change to the frontend's stack, structure or conventions updates it in the same change.
 
-The frontend implements the whole base design ([1_introduction.md](../design/1_introduction.md), phases 0 to 4):
+The frontend implements the whole base design ([1_introduction.md](../design/1_introduction.md), phases 0 to 4), with credits as lines from phase 0 of [2_credits.md](../design/2_credits.md):
 - the app shell (sidebar with the Import button, page header) and a "not found" page;
 - the dashboard: the backend's status, the catalog's totals, and the newest releases;
 - the files pages: list, register, read and update;
-- the catalog's pages: releases (with the release page and its edit tabs), artists (with their tabs), tracks, labels, release formats, release media and credit roles;
+- the catalog's pages: releases (with the release page and its edit tabs), artists (with their tabs), tracks, labels, release formats and release media;
 - tags: their definitions' pages, a release's Tags tab, its tags on the release page, a track's tags, and tag filters on the release and track lists;
 - bulk edits on the release list: setting or removing a tag on many releases;
 - the import: a release built from a folder, step by step;
@@ -59,8 +59,8 @@ slunk-fe/
         page.tsx           /artists/:id and its other tabs
       tracks/              /tracks: list, read, form
       labels/              /labels: list, read, form
-      lists/               /release-formats, /release-media and
-                           /credit-roles: one set of pages, by kind
+      lists/               /release-formats and /release-media: one set of
+                           pages, by kind
       tags/                /tags: list, read, form
       import/steps.tsx     /import and its steps
     components/
@@ -76,7 +76,7 @@ slunk-fe/
       pickers.tsx          a picker per kind of row: artist, label, file, …
       ordered-list.tsx     picked rows in order, with up, down and remove
       chip-list.tsx        a compact picked list, for table rows
-      credits-editor.tsx   credits as rows of role and artist
+      credits-editor.tsx   credit lines: a role, then its artists
       file-links-editor.tsx  file links, each with a note
       file-uses.tsx        what uses a file, each linking to it
       tag-fields.tsx       a tag definition's fields, and the new-tag dialog
@@ -85,8 +85,8 @@ slunk-fe/
       tag-values.tsx       a tag's values, each linking to the filtered list
       tag-filters.tsx      a list's tag filters: chips, and "Tag filter"
       release-table.tsx    the release table, with a column set per page
-      names.tsx            names that link to their pages: "A, B & C"
-      credit-lines.tsx     credits as "Producer – A, B", a line per role
+      names.tsx            names that link to their pages: "A, B, C"
+      credit-lines.tsx     credit lines, as "Engineer – A, B"
       cover.tsx            a cover or picture, or a placeholder
       cover-chooser.tsx    an empty cover, picture or logo that opens a
                            dialog to choose one from the disk
@@ -112,12 +112,13 @@ slunk-fe/
 
 ### Routes and pages
 
-- **Routes** are defined in `src/router.tsx`, as children of the `AppLayout` route, which renders the sidebar beside the current page. They follow the route map in [design §7.4](../design/1_introduction.md#74-route-map), which gives each route the phase it was built in. The last one, `*`, shows `NotFound`.
+- **Routes** are defined in `src/router.tsx`, as children of the `AppLayout` route, which renders the sidebar beside the current page. They follow the route map in [design §7.4](../design/1_introduction.md#74-route-map), which gives each route the phase it was built in, except for the credit roles pages, which [2_credits.md](../design/2_credits.md) removed. The last one, `*`, shows `NotFound`.
 - **Pages** live in `src/routes/`, one component per route. Each one starts with a `PageHeader`: its breadcrumb title (`crumbs`), then its buttons and tabs as `children`, which go on the right. Every crumb but the last links to its `to`.
 - **The sidebar** lists each section that's built, in `sections` in `app-sidebar.tsx`, and the lists the user manages in their own group, `lists`. A section's link stays active on its pages below it (`/artists/12` keeps Artists active).
 - **Tabs** that are routes, like an artist's or a release's edit tabs, use `TabLinks` (design §7.2: each tab is a route).
 - **Wide tables** scroll inside the page: `SidebarInset` has `min-w-0`, so a table can't widen the page past the window.
 - **Unknown ids:** a read or update page whose query returns null renders `NotFound` (design §7.2).
+- **Names** of artists and labels, wherever they're listed, go through `Names`, which joins them with commas: "U2, Green Day". An "&" is only ever part of a name, as in "Simon & Garfunkel".
 - **Links:** use React Router's `Link`.
   - shadcn components built on Base UI take it through their `render` prop: `<SidebarMenuButton render={<Link to="/" />}>`.
   - For a link that looks like a button, use `ButtonLink`. Don't render a `Link` inside `Button`: Base UI then gives the link `role="button"`, so assistive tech announces a button.
@@ -154,11 +155,17 @@ Lists follow design §7.2:
 - **One form** serves both create and update, built from shadcn `field`s. It loads first, then renders a form component that keeps the values in state, starting from what loaded.
 - **Labels:** every control has one. A `Select` gets an `id` on its `SelectTrigger`, which the `FieldLabel`'s `htmlFor` points at.
 - **Saving** goes to the read page. When a save fails, the form stays and shows the backend's reason, which is often the database's own message (a CHECK or a trigger).
-- **Pickers** (design §7.2): artists, labels, formats, media, credit roles, releases, files and tags are chosen with the pickers in `pickers.tsx`, each a `Picker` that searches the backend as the user types and offers the first 20 matches. Except for files and releases, a picker also offers to create what was typed ("Create artist 'Robbie Nevil'"). Each picker owns its query, so its results stay typed.
+- **Pickers** (design §7.2): artists, labels, formats, media, releases, files and tags are chosen with the pickers in `pickers.tsx`, each a `Picker` that searches the backend as the user types and offers the first 20 matches. Except for files and releases, a picker also offers to create what was typed ("Create artist 'Robbie Nevil'"). Each picker owns its query, so its results stay typed.
   - `Picker` is generic over its option type, so an option can carry more than an id and a name. A `TagOption` also has the tag's type, its id within the type, and whether it's multiple. Its `id` is `type:id`, since ids repeat across types.
   - `TagPicker` with `creatable` asks for the rest of a new tag in a dialog (`NewTagDialog`): its type, and single or multiple. Cancelling it creates nothing, since `onCreate` can return null.
   - `TagValuePicker` adds a value to a multi-value text tag: one that other releases already have, the most used first, or what was typed ("Add 'Funk'"). A single text value (`TagValueInput`) suggests the same values through a `<datalist>`.
-- **Ordered lists** (release artists, labels, formats, media, a track's artists and features) use `OrderedList`, whose order sets `position`. A track row uses the compact `ChipList`. Credits use `CreditsEditor`, and file links `FileLinksEditor`.
+- **Ordered lists** (release artists, labels, formats, media, a track's artists and features) use `OrderedList`, whose order sets `position`. A track row uses the compact `ChipList`. File links use `FileLinksEditor`.
+- **Credits** use `CreditsEditor`, a row per line ([2_credits.md §7](../design/2_credits.md#7-frontend)):
+  - The role is a text field, typed as printed. It suggests every spelling in use, the most used first, through a `<datalist>` (`useCreditRoles`). It only asks while it has focus, so a release with many lines doesn't send a query per line.
+  - The line's artists are chips, each with a button to move it earlier and one to remove it, then a picker that adds one.
+  - "Add credit" takes a role and an artist. When a line already has the role, ignoring case, the artist joins that line instead.
+  - A line with no role, with no artist, or with a role another line has is marked. `creditsValid()` keeps the form from saving until it's fixed, and `creditsInput()` turns the lines into `CreditInput`s.
+  - Credit lines show the role as stored, and the artist page's Credits tab groups them by role ignoring case, with `roleKey()` from `lib/format.ts`.
 - **The release forms** in `routes/releases/forms/` each take a release id and an `onSaved`, so the edit tabs and the import's steps use the same ones (design §7.6).
 - **A dialog with its own form,** like `NewTagDialog`, calls `stopPropagation()` on submit. The dialog is portaled out of the page's form in the DOM, but React still bubbles the submit event to it, which would save the page's form too.
 

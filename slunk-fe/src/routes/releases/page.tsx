@@ -49,11 +49,8 @@ const ReleaseQueryDocument = graphql(`
         name
       }
       credits {
-        role {
-          id
-          name
-        }
-        artist {
+        role
+        artists {
           id
           name
         }
@@ -85,11 +82,8 @@ const ReleaseQueryDocument = graphql(`
           name
         }
         credits {
-          role {
-            id
-            name
-          }
-          artist {
+          role
+          artists {
             id
             name
           }
@@ -204,7 +198,7 @@ function Heading({ release }: { release: Release }) {
       "Label",
       (release.labels.length > 0 || release.catalogNumber) && (
         <>
-          <Names items={release.labels} to={labelUrl} commas />
+          <Names items={release.labels} to={labelUrl} />
           {release.catalogNumber && <> – {release.catalogNumber}</>}
         </>
       ),

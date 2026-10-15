@@ -41,7 +41,7 @@ const RenameListItem = graphql(`
   }
 `)
 
-/** Creates (no `:id`) or renames a format, medium or credit role. */
+/** Creates (no `:id`) or renames a format or medium. */
 export function ListItemForm({ kind }: { kind: ListKind }) {
   const { id } = useParams()
   const { path, title } = LISTS[kind]

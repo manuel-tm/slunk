@@ -2,23 +2,21 @@ import { Fragment } from "react"
 import { Link } from "react-router"
 
 /**
- * Names that link to their pages, joined as in a credit line: "A", "A & B",
- * "A, B & C". `commas` joins them all with commas, as labels are.
+ * Names that link to their pages, joined with commas: "A", "A, B", "A, B, C"
+ * (2_credits.md §7). An "&" is only ever part of a name.
  */
 export function Names({
   items,
   to,
-  commas = false,
 }: {
   items: { id: string; name: string }[]
   to: (id: string) => string
-  commas?: boolean
 }) {
   return (
     <>
       {items.map((item, index) => (
         <Fragment key={item.id}>
-          {index > 0 && (index === items.length - 1 && !commas ? " & " : ", ")}
+          {index > 0 && ", "}
           <Link to={to(item.id)} className="hover:underline">
             {item.name}
           </Link>

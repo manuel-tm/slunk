@@ -8,7 +8,6 @@ import {
   LayersIcon,
   LayoutDashboardIcon,
   type LucideIcon,
-  MicVocalIcon,
   ShieldCheckIcon,
   TagsIcon,
   UsersIcon,
@@ -46,7 +45,6 @@ const lists: Section[] = [
   { title: "Tags", to: "/tags", icon: TagsIcon },
   { title: "Release formats", to: "/release-formats", icon: LayersIcon },
   { title: "Release media", to: "/release-media", icon: CassetteTapeIcon },
-  { title: "Credit roles", to: "/credit-roles", icon: MicVocalIcon },
 ]
 
 export function AppSidebar() {

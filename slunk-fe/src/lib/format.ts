@@ -57,9 +57,9 @@ export function formatReleased(released: string | null | undefined): string {
 }
 
 /**
- * A credit role as a credit line shows it: "producer" → "Producer". Roles
- * are stored as the user typed them, often lowercase.
+ * A credit role, to compare ignoring ASCII case as the database does: "Mixed
+ * By" and "Mixed by" are the same role.
  */
-export function formatRole(name: string): string {
-  return name.charAt(0).toUpperCase() + name.slice(1)
+export function roleKey(role: string): string {
+  return role.trim().replace(/[A-Z]/g, (c) => c.toLowerCase())
 }

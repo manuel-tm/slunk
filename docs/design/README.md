@@ -9,7 +9,7 @@ Each design doc plans one topic, numbered in the order it's written: `N_topic.md
 | Document | Covers | Status |
 |---|---|---|
 | [1_introduction.md](1_introduction.md) | The base design: requirements, data model, migrations, backend, frontend routes | Complete: phases 0 to 4 built |
-| [2_credits.md](2_credits.md) | Credits with free-text roles, each shared by several artists, and artist names joined with commas | In design |
+| [2_credits.md](2_credits.md) | Credits with free-text roles, each shared by several artists, and artist names joined with commas | Complete: phase 0 built |
 
 Planned, not written yet: **external libraries**, exporting music to other libraries. `1_introduction.md` calls it `2_external_libraries.md`, but that name was only a placeholder. It takes the next free number when it's written.
 

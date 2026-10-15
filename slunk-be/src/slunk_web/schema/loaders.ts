@@ -30,7 +30,6 @@ export function createLoaders({
     track: byId(catalog.tracksByIds),
     format: list("release_formats"),
     medium: list("release_media"),
-    role: list("credit_roles"),
     releaseArtists: grouped((ids) => catalog.releaseLinksOf("artists", ids)),
     releaseLabels: grouped((ids) => catalog.releaseLinksOf("labels", ids)),
     releaseFormats: grouped((ids) => catalog.releaseLinksOf("formats", ids)),

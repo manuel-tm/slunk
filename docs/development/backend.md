@@ -2,7 +2,7 @@
 
 > Keep this page up to date: any change to the backend's stack, structure, scripts or conventions updates it in the same change.
 
-The backend implements the whole base design ([1_introduction.md](../design/1_introduction.md), phases 0 to 4):
+The backend implements the whole base design ([1_introduction.md](../design/1_introduction.md), phases 0 to 4), with credits as lines from phase 0 of [2_credits.md](../design/2_credits.md):
 - the database connection, the migration runner with backup retention, and the migrations;
 - a GraphQL server with a `health` query;
 - the media context: registering files, browsing the library on disk, serving the files' bytes, and file links;
@@ -66,8 +66,8 @@ slunk-be/
       artists_repository.ts artists' and labels' own queries
       releases_repository.ts
       tracks_repository.ts
-      lists_repository.ts   release formats, release media and credit roles
-      links_repositories.ts credits, file links, and the dashboard's totals
+      lists_repository.ts   release formats and release media
+      links_repositories.ts credit lines, file links, and the dashboard's totals
       tags_repository.ts    tag definitions and values, of all three types
       helpers.ts            chunked `in (…)` lists, searches, grouping
       migrator.ts           the migration runner
@@ -154,7 +154,7 @@ The path is under `/raw` so it can't collide with the frontend's `/files` pages 
 
 ## The catalog context
 
-`src/slunk/catalog.ts` holds what the user catalogs: artists, labels, releases, tracks, credits, and the three lists the user manages (release formats, release media, credit roles).
+`src/slunk/catalog.ts` holds what the user catalogs: artists, labels, releases, tracks, credits, and the two lists the user manages (release formats, release media).
 
 - **Lists** share one repository and one set of functions (`listItems`, `createListItem`, …), with a `kind`. Names are unique ignoring case.
 - **Release dates** are typed as `2006`, `2006-01` or `2006-01-10`, which also sets the precision (`dates.ts`). They're stored at midnight UTC on the first unknown day, and returned with only their known parts. An impossible date, like `2013-02-30`, is refused.
@@ -172,7 +172,13 @@ The path is under `/raw` so it can't collide with the frontend's `/files` pages 
   - its own non-featured artists;
   - on a regular release with none, the release's artists;
   - on a various-artists release, only its own, or nobody.
-- **Credits** are an artist with a role, in display order. Saving a release's credits replaces them, and its tracks' credits too.
+- **Credits** are lines ([2_credits.md §4](../design/2_credits.md#4-data-model)): a role as printed, and the artists who hold it, in order. "Engineer – Paul Barrett, Robbie Adams" is one line.
+  - Saving a release's credits replaces them, and its tracks' credits too. A track's own are saved with the track.
+  - Roles are trimmed. An artist given twice on a line is kept once.
+  - A save is refused, with a message, when a role is empty, when a line has no artists, or when two lines have the same role, ignoring case.
+  - The repository inserts each line, then its artists numbered from 0, inside the save's transaction. The database checks at commit that every line has an artist at position 0 ([reference/database.md](../reference/database.md#credit-lines)).
+  - `creditRoles` suggests the roles in use, for the editor: each spelling once, so "Mixed By" and "Mixed by" are both there, the most used first, at most 20.
+  - An artist's credits are a row per line the artist is on, and `counts.credits` counts those lines.
 - **Deletes** check what blocks them first, and the error says what does: "The artist is still used: release artist on 1 release, credited 2 times". Each entity's `blockers` field gives the same reasons ahead of time, for the delete dialog.
 - **Import suggestions** (design §7.9) only read the folder:
   - `suggestRelease(folder)`: the most common album, date and album artist tags, or else the folder's name. Also the releases with that title already, and how many audio files, images and other files the folder holds.
@@ -268,7 +274,7 @@ The rules:
 - Never edit a migration once it has been committed. Write a new one.
 - A migration runs inside the runner's transaction, so it must not start its own (`db.transaction()`).
 - Migrations don't import app code. App code changes over time, and a migration must not. The exception is `src/repo/rebuild_table.ts`, which is part of the migration system.
-- Starter rows, like the first credit roles, are inserted by migrations, and nothing may depend on them. Sample data goes in `priv/repo/seeds.ts`.
+- Starter rows, like the first release formats, are inserted by migrations, and nothing may depend on them. Sample data goes in `priv/repo/seeds.ts`.
 
 ### Changing an existing table
 
@@ -304,6 +310,7 @@ It follows SQLite's recipe ([design §5.3](../design/1_introduction.md#53-changi
 5. It puts back the `AUTOINCREMENT` counter, which the copy lowers to the highest id left. Otherwise ids of deleted rows would be reused.
 
 Using it:
+- **Generated columns,** like a credit line's `first_artist_position`, aren't copied: `pragma_table_info` doesn't list them, and the new definition creates them again.
 - **Indexes and triggers** come back exactly as they were. To change one, or if it uses a column that's gone, drop it before `rebuildTable()` and create the new version after.
 - **Other tables** keep working. Their foreign keys and triggers name the table, so they apply to the new one. If one of them uses a column you renamed or removed, recreate it too.
 - **Foreign keys:** it only runs with foreign keys off, as the runner sets them, and throws otherwise. Rows that break a foreign key fail the runner's `foreign_key_check`, and the whole migration rolls back.
@@ -331,7 +338,7 @@ Using it:
 - **Ids:** a field called `id` must identify its object. Apollo Client caches objects by type and `id`, so two objects with the same `id` would be merged into one. So:
   - `FileUse` names the id of the release, artist or track that uses a file `entityId`;
   - `Credit` has no id, since release and track credits come from two tables whose ids overlap;
-  - release formats, release media and credit roles are three types (`ReleaseFormat`, `ReleaseMedium`, `CreditRole`) behind one `ListItem` interface, so format 1 and medium 1 stay apart;
+  - release formats and release media are two types (`ReleaseFormat`, `ReleaseMedium`) behind one `ListItem` interface, so format 1 and medium 1 stay apart;
   - tags are likewise `TextTag`, `NumberTag` and `DateTag` behind a `Tag` interface;
   - `TagValues`, a tag with its values on a release or track, has no id;
   - `LibraryCheck` and its parts have no id, since they're worked out on each run.
@@ -341,7 +348,7 @@ Using it:
   - `files`, `file`, `fileCounts`: registered files. `files(withoutTrack: true)` leaves out tracks' audio, for creating tracks.
   - `folder`, `folderFiles`: the library on disk.
   - `registerFiles`, `updateFile`, `deleteFile`: changes to the file records.
-  - `artists`, `artist`, `labels`, `label`, `releases`, `release`, `tracks`, `track`, `listItems`, `listItem`: the catalog. `releases` filters by `format`, `medium`, `label`, `artist` and `tags`, `tracks` by `release` and `tags`. `releasesTitled` finds releases with a title, and `releaseIds` every release a filter matches.
+  - `artists`, `artist`, `labels`, `label`, `releases`, `release`, `tracks`, `track`, `listItems`, `listItem`: the catalog. `releases` filters by `format`, `medium`, `label`, `artist` and `tags`, `tracks` by `release` and `tags`. `releasesTitled` finds releases with a title, and `releaseIds` every release a filter matches. `creditRoles` suggests roles for credits.
   - `createArtist`, `updateArtist`, `deleteArtist`, and the same for labels, releases, tracks and list items.
   - `setReleaseTracks`, `setReleaseFiles`, `setReleaseCredits`: a release's edit tabs. Files can be given by path, and they're registered first.
   - `setReleaseCover`, `setArtistPicture`, `setLabelPicture`: only the image, from a file id or a path to register first. The pages set an empty one with them.

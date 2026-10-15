@@ -1,7 +1,12 @@
 import { useMutation, useQuery } from "@apollo/client/react"
 import { useState } from "react"
 
-import { type CreditRow, CreditsEditor } from "@/components/credits-editor"
+import {
+  type CreditLine,
+  CreditsEditor,
+  creditsInput,
+  creditsValid,
+} from "@/components/credits-editor"
 import { QueryError } from "@/components/query-error"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -13,11 +18,8 @@ const ReleaseCreditsFormQuery = graphql(`
       id
       title
       credits {
-        role {
-          id
-          name
-        }
-        artist {
+        role
+        artists {
           id
           name
         }
@@ -28,11 +30,8 @@ const ReleaseCreditsFormQuery = graphql(`
         trackNumber
         title
         credits {
-          role {
-            id
-            name
-          }
-          artist {
+          role
+          artists {
             id
             name
           }
@@ -50,9 +49,9 @@ const SetReleaseCredits = graphql(`
   }
 `)
 
-type Track = { id: string; label: string; credits: CreditRow[] }
+type Track = { id: string; label: string; credits: CreditLine[] }
 
-/** The release's credits, then each track's, as rows of role and artist. */
+/** The release's credit lines, then each track's. */
 export function ReleaseCreditsForm({
   releaseId,
   submitLabel = "Save",
@@ -93,7 +92,7 @@ function Form({
   onSaved,
 }: {
   releaseId: string
-  initialCredits: CreditRow[]
+  initialCredits: CreditLine[]
   initialTracks: Track[]
   submitLabel: string
   onSaved: () => void
@@ -101,8 +100,8 @@ function Form({
   const [credits, setCredits] = useState(initialCredits)
   const [tracks, setTracks] = useState(initialTracks)
   const [save, { loading, error }] = useMutation(SetReleaseCredits)
-  const input = (rows: CreditRow[]) =>
-    rows.map((row) => ({ artistId: row.artist.id, roleId: row.role.id }))
+  const valid =
+    creditsValid(credits) && tracks.every((t) => creditsValid(t.credits))
 
   return (
     <form
@@ -114,10 +113,10 @@ function Form({
             variables: {
               id: releaseId,
               input: {
-                credits: input(credits),
+                credits: creditsInput(credits),
                 tracks: tracks.map((t) => ({
                   trackId: t.id,
-                  credits: input(t.credits),
+                  credits: creditsInput(t.credits),
                 })),
               },
             },
@@ -149,7 +148,7 @@ function Form({
         </section>
       ))}
       <div>
-        <Button type="submit" disabled={loading}>
+        <Button type="submit" disabled={loading || !valid}>
           {submitLabel}
         </Button>
       </div>

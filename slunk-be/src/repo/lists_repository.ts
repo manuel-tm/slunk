@@ -11,16 +11,14 @@ import { chunks, contains } from "./helpers.ts"
 const USES = {
   release_formats: sql`(select count(*) from release_formats_releases where format_id = l.id)`,
   release_media: sql`(select count(*) from release_media_releases where medium_id = l.id)`,
-  credit_roles: sql`(select count(*) from release_credits where role_id = l.id)
-    + (select count(*) from track_credits where role_id = l.id)`,
 }
 
 /**
- * Release formats, release media and credit roles have the same columns, so
- * they share this repository. The casts name one table for Kysely's types.
+ * Release formats and release media have the same columns, so they share
+ * this repository. The casts name one table for Kysely's types.
  */
 export function createListsRepository(db: Kysely<DB>): ListsRepository {
-  const table = (kind: ListKind) => kind as "credit_roles"
+  const table = (kind: ListKind) => kind as "release_formats"
   const item = (kind: ListKind) => (row: { id: number; name: string }) => ({
     kind,
     id: row.id,

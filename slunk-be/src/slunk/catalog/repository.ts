@@ -46,18 +46,20 @@ export type Track = {
 
 export type TrackArtist = { artistId: number; featured: boolean }
 
-export type Credit = { id: number; artistId: number; roleId: number }
+/** A credit line: a role as printed, and the artists who hold it, in order. */
+export type Credit = { role: string; artistIds: number[] }
 
 /** The lists the user manages, which are just names. */
-export type ListKind = "release_formats" | "release_media" | "credit_roles"
+export type ListKind = "release_formats" | "release_media"
 
 export type ListItem = { kind: ListKind; id: number; name: string }
 
 /** A release the artist is on as a track artist only, with those tracks. */
 export type Appearance = { releaseId: number; trackIds: number[] }
 
+/** A credit line the artist is on */
 export type ArtistCredit = {
-  roleId: number
+  role: string
   releaseId: number
   trackId: number | null
 }
@@ -168,20 +170,22 @@ export interface ListsRepository {
   insert(kind: ListKind, name: string): Promise<ListItem>
   update(kind: ListKind, id: number, name: string): Promise<ListItem | null>
   delete(kind: ListKind, id: number): Promise<void>
-  /** Releases with the format or medium, or credits with the role */
+  /** Releases with the format or medium */
   uses(kind: ListKind, id: number): Promise<number>
 }
 
 export type CreditOwner = "release" | "track"
 
 export interface CreditsRepository {
-  /** Credits by release or track, in display order */
+  /** Credit lines by release or track, in display order */
   of(owner: CreditOwner, ids: readonly number[]): Promise<Map<number, Credit[]>>
-  set(
-    owner: CreditOwner,
-    id: number,
-    credits: { artistId: number; roleId: number }[]
-  ): Promise<void>
+  /**
+   * Replaces the lines, in display order. Call it inside a transaction: the
+   * database checks that each line has an artist at commit.
+   */
+  set(owner: CreditOwner, id: number, credits: Credit[]): Promise<void>
+  /** Roles in use on releases and tracks, each spelling once, the most used first */
+  roles(query: { search?: string; limit: number }): Promise<string[]>
 }
 
 export interface StatsRepository {

@@ -53,10 +53,12 @@ export type ArtistCounts = {
   releases: Scalars['Int']['output'];
 };
 
+/** A credit line the artist is on. */
 export type ArtistCredit = {
   __typename?: 'ArtistCredit';
   release: Release;
-  role: CreditRole;
+  /** As printed */
+  role: Scalars['String']['output'];
   /** Null for a credit on the release itself */
   track?: Maybe<Track>;
 };
@@ -99,25 +101,18 @@ export type ChangedFile = {
   sizeBytes: Scalars['Float']['output'];
 };
 
-/** An artist's role on a release or track. It has no id: release and track credits live in different tables, so their ids would collide. */
+/** A credit line: a role, as printed, and the artists who hold it, in order. It has no id: release and track credits live in different tables, so their ids would collide. */
 export type Credit = {
   __typename?: 'Credit';
-  artist: Artist;
-  role: CreditRole;
+  artists: Array<Artist>;
+  role: Scalars['String']['output'];
 };
 
 export type CreditInput = {
-  artistId: Scalars['ID']['input'];
-  roleId: Scalars['ID']['input'];
-};
-
-export type CreditRole = ListItem & {
-  __typename?: 'CreditRole';
-  blockers: Array<Scalars['String']['output']>;
-  id: Scalars['ID']['output'];
-  kind: ListKind;
-  name: Scalars['String']['output'];
-  uses: Scalars['Int']['output'];
+  /** At least one, in display order. One given twice is kept once. */
+  artistIds: Array<Scalars['ID']['input']>;
+  /** As printed. Trimmed, and unique on its release or track, ignoring case. */
+  role: Scalars['String']['input'];
 };
 
 export type DateTag = Tag & {
@@ -310,13 +305,13 @@ export type LibraryCheck = {
   unregisteredFolders: Array<UnregisteredFolder>;
 };
 
-/** A row of a list the user manages: a release format, release medium or credit role. */
+/** A row of a list the user manages: a release format or release medium. */
 export type ListItem = {
   blockers: Array<Scalars['String']['output']>;
   id: Scalars['ID']['output'];
   kind: ListKind;
   name: Scalars['String']['output'];
-  /** Releases with the format or medium, or credits with the role. */
+  /** Releases with the format or medium. */
   uses: Scalars['Int']['output'];
 };
 
@@ -327,7 +322,6 @@ export type ListItemPage = {
 };
 
 export type ListKind =
-  | 'credit_roles'
   | 'release_formats'
   | 'release_media';
 
@@ -616,6 +610,8 @@ export type Query = {
   artist?: Maybe<Artist>;
   artists: ArtistPage;
   catalogTotals: CatalogTotals;
+  /** Roles in use on releases and tracks, for suggestions: the first 20 containing `q`, ignoring case, the most used first. Each spelling is its own suggestion, so "Mixed By" and "Mixed by" are both offered. */
+  creditRoles: Array<Scalars['String']['output']>;
   file?: Maybe<File>;
   fileCounts: FileCounts;
   /** A page of registered files. */
@@ -631,7 +627,7 @@ export type Query = {
   /** Runs the library check: reads every registered file's size and mtime, and lists the folders they're in. When files are missing, it also scans the library and hashes files of the same size, to find where they moved. Nothing is written. */
   libraryCheck: LibraryCheck;
   listItem?: Maybe<ListItem>;
-  /** Release formats, release media or credit roles. */
+  /** Release formats or release media. */
   listItems: ListItemPage;
   release?: Maybe<Release>;
   /** Every release matching the same search and filters as `releases`, newest first: selecting them all for a bulk edit. */
@@ -664,6 +660,11 @@ export type QueryArtistsArgs = {
   perPage: Scalars['Int']['input'];
   q?: InputMaybe<Scalars['String']['input']>;
   sort?: InputMaybe<Scalars['String']['input']>;
+};
+
+
+export type QueryCreditRolesArgs = {
+  q?: InputMaybe<Scalars['String']['input']>;
 };
 
 
@@ -1201,7 +1202,6 @@ export type ResolversTypes = {
   ChangedFile: ResolverTypeWrapper<Omit<ChangedFile, 'file'> & { file: ResolversTypes['File'] }>;
   Credit: ResolverTypeWrapper<CreditModel>;
   CreditInput: CreditInput;
-  CreditRole: ResolverTypeWrapper<ListItemModel>;
   DateTag: ResolverTypeWrapper<TagModel>;
   File: ResolverTypeWrapper<FileRecordModel>;
   FileCounts: ResolverTypeWrapper<FileCounts>;
@@ -1276,7 +1276,6 @@ export type ResolversParentTypes = {
   ChangedFile: Omit<ChangedFile, 'file'> & { file: ResolversParentTypes['File'] };
   Credit: CreditModel;
   CreditInput: CreditInput;
-  CreditRole: ListItemModel;
   DateTag: TagModel;
   File: FileRecordModel;
   FileCounts: FileCounts;
@@ -1361,7 +1360,7 @@ export type ArtistCountsResolvers<ContextType = Context, ParentType extends Reso
 
 export type ArtistCreditResolvers<ContextType = Context, ParentType extends ResolversParentTypes['ArtistCredit'] = ResolversParentTypes['ArtistCredit']> = {
   release?: Resolver<ResolversTypes['Release'], ParentType, ContextType>;
-  role?: Resolver<ResolversTypes['CreditRole'], ParentType, ContextType>;
+  role?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   track?: Resolver<Maybe<ResolversTypes['Track']>, ParentType, ContextType>;
 };
 
@@ -1390,17 +1389,8 @@ export type ChangedFileResolvers<ContextType = Context, ParentType extends Resol
 };
 
 export type CreditResolvers<ContextType = Context, ParentType extends ResolversParentTypes['Credit'] = ResolversParentTypes['Credit']> = {
-  artist?: Resolver<ResolversTypes['Artist'], ParentType, ContextType>;
-  role?: Resolver<ResolversTypes['CreditRole'], ParentType, ContextType>;
-};
-
-export type CreditRoleResolvers<ContextType = Context, ParentType extends ResolversParentTypes['CreditRole'] = ResolversParentTypes['CreditRole']> = {
-  blockers?: Resolver<Array<ResolversTypes['String']>, ParentType, ContextType>;
-  id?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
-  kind?: Resolver<ResolversTypes['ListKind'], ParentType, ContextType>;
-  name?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
-  uses?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
-  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
+  artists?: Resolver<Array<ResolversTypes['Artist']>, ParentType, ContextType>;
+  role?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
 };
 
 export type DateTagResolvers<ContextType = Context, ParentType extends ResolversParentTypes['DateTag'] = ResolversParentTypes['DateTag']> = {
@@ -1504,7 +1494,7 @@ export type LibraryCheckResolvers<ContextType = Context, ParentType extends Reso
 };
 
 export type ListItemResolvers<ContextType = Context, ParentType extends ResolversParentTypes['ListItem'] = ResolversParentTypes['ListItem']> = {
-  __resolveType: TypeResolveFn<'CreditRole' | 'ReleaseFormat' | 'ReleaseMedium', ParentType, ContextType>;
+  __resolveType: TypeResolveFn<'ReleaseFormat' | 'ReleaseMedium', ParentType, ContextType>;
 };
 
 export type ListItemPageResolvers<ContextType = Context, ParentType extends ResolversParentTypes['ListItemPage'] = ResolversParentTypes['ListItemPage']> = {
@@ -1570,6 +1560,7 @@ export type QueryResolvers<ContextType = Context, ParentType extends ResolversPa
   artist?: Resolver<Maybe<ResolversTypes['Artist']>, ParentType, ContextType, RequireFields<QueryArtistArgs, 'id'>>;
   artists?: Resolver<ResolversTypes['ArtistPage'], ParentType, ContextType, RequireFields<QueryArtistsArgs, 'page' | 'perPage'>>;
   catalogTotals?: Resolver<ResolversTypes['CatalogTotals'], ParentType, ContextType>;
+  creditRoles?: Resolver<Array<ResolversTypes['String']>, ParentType, ContextType, Partial<QueryCreditRolesArgs>>;
   file?: Resolver<Maybe<ResolversTypes['File']>, ParentType, ContextType, RequireFields<QueryFileArgs, 'id'>>;
   fileCounts?: Resolver<ResolversTypes['FileCounts'], ParentType, ContextType>;
   files?: Resolver<ResolversTypes['FilePage'], ParentType, ContextType, RequireFields<QueryFilesArgs, 'page' | 'perPage'>>;
@@ -1743,7 +1734,6 @@ export type Resolvers<ContextType = Context> = {
   CatalogTotals?: CatalogTotalsResolvers<ContextType>;
   ChangedFile?: ChangedFileResolvers<ContextType>;
   Credit?: CreditResolvers<ContextType>;
-  CreditRole?: CreditRoleResolvers<ContextType>;
   DateTag?: DateTagResolvers<ContextType>;
   File?: FileResolvers<ContextType>;
   FileCounts?: FileCountsResolvers<ContextType>;
