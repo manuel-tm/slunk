@@ -488,9 +488,7 @@ function FolderFilesForm({
                     />
                   )}
                 </TableCell>
-                <TableCell className="font-mono whitespace-normal">
-                  {row.path}
-                </TableCell>
+                <TableCell className="font-mono">{row.path}</TableCell>
                 <TableCell className="text-right tabular-nums">
                   {formatSize(row.sizeBytes)}
                 </TableCell>

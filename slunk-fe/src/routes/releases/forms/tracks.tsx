@@ -289,31 +289,37 @@ function Rows({
                 key={row.key}
                 className={off ? "opacity-60" : undefined}
               >
-                <TableCell>
-                  {row.fromFolder ? (
-                    <Checkbox
-                      aria-label={`Include ${row.path}`}
-                      checked={row.include}
-                      disabled={!!row.locked}
-                      onCheckedChange={(include) => edit(row.key, { include })}
-                    />
-                  ) : (
-                    <Button
-                      type="button"
-                      size="icon-xs"
-                      variant="ghost"
-                      aria-label={`Remove ${row.title}`}
-                      onClick={() =>
-                        setRows((current) =>
-                          current.filter((r) => r.key !== row.key)
-                        )
-                      }
-                    >
-                      <XIcon />
-                    </Button>
-                  )}
+                {/* Top-aligned, so a hint or chips don't push the row's inputs
+                    down; non-inputs are centered on the inputs' h-8 line */}
+                <TableCell className="align-top">
+                  <div className="flex h-8 items-center">
+                    {row.fromFolder ? (
+                      <Checkbox
+                        aria-label={`Include ${row.path}`}
+                        checked={row.include}
+                        disabled={!!row.locked}
+                        onCheckedChange={(include) =>
+                          edit(row.key, { include })
+                        }
+                      />
+                    ) : (
+                      <Button
+                        type="button"
+                        size="icon-xs"
+                        variant="ghost"
+                        aria-label={`Remove ${row.title}`}
+                        onClick={() =>
+                          setRows((current) =>
+                            current.filter((r) => r.key !== row.key)
+                          )
+                        }
+                      >
+                        <XIcon />
+                      </Button>
+                    )}
+                  </div>
                 </TableCell>
-                <TableCell>
+                <TableCell className="align-top">
                   <Input
                     aria-label="Disc"
                     type="number"
@@ -326,7 +332,7 @@ function Rows({
                     }
                   />
                 </TableCell>
-                <TableCell>
+                <TableCell className="align-top">
                   <Input
                     aria-label="Number"
                     type="number"
@@ -343,7 +349,7 @@ function Rows({
                     }
                   />
                 </TableCell>
-                <TableCell>
+                <TableCell className="align-top">
                   <Input
                     aria-label="Title"
                     required={row.include}
@@ -372,11 +378,11 @@ function Rows({
                     picker={(p) => <ArtistPicker {...p} />}
                   />
                 </TableCell>
-                <TableCell className="text-right tabular-nums">
+                <TableCell className="text-right align-top leading-8 tabular-nums">
                   {formatDuration(row.durationMs)}
                 </TableCell>
-                <TableCell className="max-w-64 whitespace-normal">
-                  <span className="font-mono break-all">{row.path}</span>
+                <TableCell className="align-top">
+                  <div className="font-mono leading-8">{row.path}</div>
                   {row.locked && (
                     <p className="text-muted-foreground">{row.locked}</p>
                   )}
