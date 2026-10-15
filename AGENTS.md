@@ -27,9 +27,12 @@ The full process is in [docs/README.md](docs/README.md#how-we-work).
   - Any change that affects something documented updates the docs in the same change: requirements and setup, commands and scripts, project structure, conventions, and behavior.
   - If you find a doc that no longer matches the code, fix it, even if your change didn't cause it.
   - Document only what exists, and never copy plans from `docs/design/` into the rest of `docs/`.
-- **Leave finished design docs alone.** `docs/design/` is mostly the project's history. A design doc is only edited while that design is being developed; after that, it changes only through appendices.
-- **Mark a design complete** when all its phases are built: a status line under its title, and its row in the index table at the top of `1_introduction.md`.
-- **When the code shows a design has to change:**
+- **A design doc is edited only while its design is in progress:**
+  - **while it's being designed,** freely;
+  - **while its phases are being built,** only through appendices (below).
+- **Never edit a finished design doc,** not even to add an appendix. Once all its phases are built, it's a record of what was planned. A later change to what it describes goes in the code and the rest of `docs/`, and a change that needs planning gets a new design doc. The only exception is the index table at the top of `1_introduction.md`, which keeps a row for every design doc.
+- **Mark a design complete** when all its phases are built: a status line under its title, and its row in the index table at the top of `1_introduction.md`. That's the last edit the doc gets.
+- **When the code shows a design has to change,** while its phases are being built:
   - Don't rewrite the design text. Add an appendix at the end of that design doc, plus a one-line note at the affected section.
   - If it changes a design decision (not just a detail), ask before going ahead.
 - **New design topics** get a new numbered doc, `docs/design/N_topic.md`, and a row in the index table at the top of `1_introduction.md`.
@@ -65,5 +68,5 @@ Don't implement export or sync, and don't add tables for it. It needs `docs/desi
 - **Frontend:** in `slunk-fe/`, `npm run typecheck` and `npm run lint` pass, and `npm run format` has been run.
 - **Backend:** in `slunk-be/`, the same checks, plus migrations apply and roll back cleanly on a fresh database.
 - **GraphQL:** after changing the schema or a query, `npm run codegen` has been run in both projects.
-- **Docs:** everything in `docs/` outside `docs/design/` matches the code after your change, and any design change is recorded as an appendix.
+- **Docs:** everything in `docs/` outside `docs/design/` matches the code after your change. A design change made while building that design's phases is recorded as an appendix, and finished design docs are untouched.
 - **Report:** say what you verified and what you didn't.
