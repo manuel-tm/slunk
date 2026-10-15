@@ -2,7 +2,7 @@
 
 > Keep this page up to date: any change to the frontend's stack, structure or conventions updates it in the same change.
 
-The frontend has phases 0 to 4:
+The frontend implements the whole base design ([1_introduction.md](../design/1_introduction.md), phases 0 to 4):
 - the app shell (sidebar with the Import button, page header) and a "not found" page;
 - the dashboard: the backend's status, the catalog's totals, and the newest releases;
 - the files pages: list, register, read and update;
@@ -109,9 +109,9 @@ slunk-fe/
 
 ### Routes and pages
 
-- **Routes** are defined in `src/router.tsx`, as children of the `AppLayout` route, which renders the sidebar beside the current page. They follow the route map in [design §7.4](../design/1_introduction.md#74-route-map), and are added as their phase is built. The last one, `*`, shows `NotFound`.
+- **Routes** are defined in `src/router.tsx`, as children of the `AppLayout` route, which renders the sidebar beside the current page. They follow the route map in [design §7.4](../design/1_introduction.md#74-route-map), which gives each route the phase it was built in. The last one, `*`, shows `NotFound`.
 - **Pages** live in `src/routes/`, one component per route. Each one starts with a `PageHeader`: its breadcrumb title (`crumbs`), then its buttons and tabs as `children`, which go on the right. Every crumb but the last links to its `to`.
-- **The sidebar** lists a section once its phase is built, in `sections` in `app-sidebar.tsx`, and the lists the user manages in their own group, `lists`. A section's link stays active on its pages below it (`/artists/12` keeps Artists active).
+- **The sidebar** lists each section that's built, in `sections` in `app-sidebar.tsx`, and the lists the user manages in their own group, `lists`. A section's link stays active on its pages below it (`/artists/12` keeps Artists active).
 - **Tabs** that are routes, like an artist's or a release's edit tabs, use `TabLinks` (design §7.2: each tab is a route).
 - **Wide tables** scroll inside the page: `SidebarInset` has `min-w-0`, so a table can't widen the page past the window.
 - **Unknown ids:** a read or update page whose query returns null renders `NotFound` (design §7.2).

@@ -2,7 +2,7 @@
 
 A local music library manager. Slunk keeps its own database as the source of truth for your music's metadata, and only reads your music files.
 
-> **Status:** early. Phases 0 (foundations), 1 (files), 2 (catalog), 3 (tags) and 4 (integrity) are built:
+> **Status:** early. The base design, [Introduction to Slunk](docs/design/1_introduction.md), is complete: its phases 0 to 4 (foundations, files, catalog, tags and integrity) are all built. Slunk now has:
 > - the database, with its full schema and migrations, backed up before each migration;
 > - a backend that serves a GraphQL API over it;
 > - a frontend where you register files from your library, then catalog them: import a folder as a release, step by step, and edit releases, artists, tracks, labels and credits;

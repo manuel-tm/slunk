@@ -1,5 +1,7 @@
 # Introduction to Slunk
 
+> **Status: complete.** All of this design's phases (§8, phases 0 to 4) were built by 2026-10-15. It's now the record of Slunk's base design, and changes only through appendices. Later designs are separate documents, each with its own phases.
+
 Slunk keeps track of a music collection. This document is the starting point for the project. It covers:
 - what Slunk is and what it must do;
 - its data model;
@@ -12,10 +14,10 @@ Slunk keeps track of a music collection. This document is the starting point for
 
 Design docs are plans, and after that a history of the project. A design doc is only edited while that design is being developed. After that its text stays as it was: when the code shows something has to change, the change is added as an appendix at the end of the doc. What's actually built is documented in the rest of `docs/` ([docs/README.md](../README.md)), and those docs are kept up to date with the code.
 
-| Document | Covers |
-|---|---|
-| `1_introduction.md` | This document: the foundations listed above |
-| `2_external_libraries.md` | Exporting music to other libraries. Planned, not written yet |
+| Document | Covers | Status |
+|---|---|---|
+| `1_introduction.md` | This document: the foundations listed above | Complete: phases 0 to 4 built |
+| `2_external_libraries.md` | Exporting music to other libraries | Planned, not written yet |
 
 ## 1. Summary
 

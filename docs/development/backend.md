@@ -2,7 +2,7 @@
 
 > Keep this page up to date: any change to the backend's stack, structure, scripts or conventions updates it in the same change.
 
-The backend has phases 0 to 4:
+The backend implements the whole base design ([1_introduction.md](../design/1_introduction.md), phases 0 to 4):
 - the database connection, the migration runner with backup retention, and the migrations;
 - a GraphQL server with a `health` query;
 - the media context: registering files, browsing the library on disk, serving the files' bytes, and file links;

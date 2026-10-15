@@ -8,13 +8,15 @@ Slunk is a local music library manager. Its SQLite database is the source of tru
 
 ## Where things are
 
-- **[`docs/design/`](docs/design/): design docs.** These are the plans, used for planning and prompting. [`1_introduction.md`](docs/design/1_introduction.md) is the base design. Read its relevant sections before changing the data model, migrations, backend structure, frontend routes, or anything that touches files.
+- **[`docs/design/`](docs/design/): design docs.** These are the plans, used for planning and prompting. [`1_introduction.md`](docs/design/1_introduction.md) is the base design, and it's complete: all its phases are built. Read its relevant sections before changing the data model, migrations, backend structure, frontend routes, or anything that touches files.
 - **The rest of [`docs/`](docs/README.md): what's actually built,** kept up to date with the code. Start at `docs/README.md`.
 - **`slunk-be/`: the backend.** How it's built, including migrations: [`docs/development/backend.md`](docs/development/backend.md). The schema as built: [`docs/reference/database.md`](docs/reference/database.md).
 - **`slunk-fe/`: the frontend.** How it's built: [`docs/development/frontend.md`](docs/development/frontend.md).
 - **`temp/`: local assets for prompting, never committed.** See [Never reference files in `temp/`](#never-reference-files-in-temp).
 
-Work happens in phases (design doc §8). Stay within the current phase unless asked otherwise.
+Work happens in phases. Each design doc plans its own, numbered from 0, so a phase is named with its doc. Stay within the current phase unless asked otherwise.
+
+When citing a design doc in code comments or docs, "design §4.3" and "phase 2" with no document named mean `1_introduction.md`. Name any later design doc: "2_external_libraries.md §3", "phase 1 of 2_external_libraries.md".
 
 ## Workflow: design → code → docs
 
@@ -26,6 +28,7 @@ The full process is in [docs/README.md](docs/README.md#how-we-work).
   - If you find a doc that no longer matches the code, fix it, even if your change didn't cause it.
   - Document only what exists, and never copy plans from `docs/design/` into the rest of `docs/`.
 - **Leave finished design docs alone.** `docs/design/` is mostly the project's history. A design doc is only edited while that design is being developed; after that, it changes only through appendices.
+- **Mark a design complete** when all its phases are built: a status line under its title, and its row in the index table at the top of `1_introduction.md`.
 - **When the code shows a design has to change:**
   - Don't rewrite the design text. Add an appendix at the end of that design doc, plus a one-line note at the affected section.
   - If it changes a design decision (not just a detail), ask before going ahead.
