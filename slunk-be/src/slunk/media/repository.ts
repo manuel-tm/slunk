@@ -55,6 +55,8 @@ export interface FilesRepository {
   get(id: number): Promise<FileRecord | null>
   getMany(ids: readonly number[]): Promise<FileRecord[]>
   findByPaths(paths: string[]): Promise<FileRecord[]>
+  /** Every registered file, by path, for the library check */
+  all(): Promise<FileRecord[]>
   insert(files: NewFile[]): Promise<FileRecord[]>
   /** Also sets `updatedAt`. Null if there's no such file. */
   update(id: number, changes: Partial<NewFile>): Promise<FileRecord | null>

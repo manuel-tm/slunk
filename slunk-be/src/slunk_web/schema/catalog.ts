@@ -2,7 +2,7 @@ import type { Catalog, FileLinkInput, FileRef } from "../../slunk/catalog.ts"
 import type { ListKind } from "../../slunk/catalog/repository.ts"
 import { loadAll, loadRequired } from "./loaders.ts"
 import type { Resolvers } from "./resolvers_types.ts"
-import { tagFilters } from "./tagging.ts"
+import { tagFilters, tagValues } from "./tagging.ts"
 
 const LIST_TYPES = {
   release_formats: "ReleaseFormat",
@@ -76,10 +76,23 @@ export const catalogResolvers: Resolvers = {
         tags: tagFilters(tagging, args.tags),
       }),
     release: (_parent, { id }, { catalog }) => catalog.getRelease(n(id)),
+    releaseIds: async (_parent, args, { catalog, tagging }) =>
+      catalog.releaseIds({
+        ...args,
+        format: optional(args.format),
+        medium: optional(args.medium),
+        label: optional(args.label),
+        artist: optional(args.artist),
+        tags: tagFilters(tagging, args.tags),
+      }),
     releasesTitled: (_parent, { title }, { catalog }) =>
       catalog.releasesTitled(title),
-    tracks: (_parent, args, { catalog }) =>
-      catalog.listTracks({ ...args, release: optional(args.release) }),
+    tracks: (_parent, args, { catalog, tagging }) =>
+      catalog.listTracks({
+        ...args,
+        release: optional(args.release),
+        tags: tagFilters(tagging, args.tags),
+      }),
     track: (_parent, { id }, { catalog }) => catalog.getTrack(n(id)),
     listItems: (_parent, { kind, ...args }, { catalog }) =>
       catalog.listItems(kind, args),
@@ -363,6 +376,7 @@ function trackInput(input: {
     path?: string | null
     note?: string | null
   }[]
+  tags?: Parameters<typeof tagValues>[0] | null
 }) {
   return {
     releaseId: n(input.releaseId),
@@ -374,5 +388,6 @@ function trackInput(input: {
     featureIds: ids(input.featureIds),
     credits: credits(input.credits),
     files: fileLinks(input.files),
+    tags: input.tags ? tagValues(input.tags) : null,
   }
 }

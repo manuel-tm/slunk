@@ -94,6 +94,15 @@ export function createFilesRepository(db: Kysely<DB>): FilesRepository {
       return found
     },
 
+    async all() {
+      const rows = await db
+        .selectFrom("files")
+        .selectAll()
+        .orderBy("path")
+        .execute()
+      return rows.map(toRecord)
+    },
+
     async insert(files) {
       if (files.length === 0) return []
       const rows = await db

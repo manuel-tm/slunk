@@ -1,4 +1,4 @@
-import type { TagFilterInput, TagType } from "@/gql/graphql"
+import type { TagFilterInput, TagRefInput, TagType } from "@/gql/graphql"
 import { formatReleased } from "@/lib/format"
 
 export const TAG_TYPES: TagType[] = ["text", "number", "date"]
@@ -84,7 +84,27 @@ export function describeTagFilter(name: string, filter: TagFilter): string {
   return `${name} ${op} ${value}`
 }
 
-/** The release list filtered to releases with this value. */
-export function tagValueUrl(type: TagType, tagId: string, value: string) {
-  return `/releases?${new URLSearchParams({ [tagFilterKey(type, tagId, "equals")]: value })}`
+/** The tags a list's filters name, once each, for `tagsByRef`. */
+export function tagFilterRefs(filters: TagFilter[]): TagRefInput[] {
+  const refs = new Map(
+    filters.map((f) => [`${f.type}:${f.tagId}`, { type: f.type, id: f.tagId }])
+  )
+  return [...refs.values()]
+}
+
+/** Tag names by `type:id`, from `tagsByRef`. */
+export function tagNames(
+  tags: { id: string; type: TagType; name: string }[] | undefined
+): Map<string, string> {
+  return new Map((tags ?? []).map((t) => [`${t.type}:${t.id}`, t.name]))
+}
+
+/** A list filtered to what has this value: releases, or tracks. */
+export function tagValueUrl(
+  type: TagType,
+  tagId: string,
+  value: string,
+  list: "/releases" | "/tracks" = "/releases"
+) {
+  return `${list}?${new URLSearchParams({ [tagFilterKey(type, tagId, "equals")]: value })}`
 }

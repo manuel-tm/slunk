@@ -41,6 +41,8 @@ Scripts, run inside `slunk-be/`:
 | `npm run lint` | Runs ESLint |
 | `npm run format` | Formats `.ts` files with Prettier |
 
+The database commands back the database up first, and each backup removes the oldest ones beyond the last 10 in `slunk-backups/`. `SLUNK_KEEP_BACKUPS` in `.env` changes how many are kept.
+
 How the backend is built is described in [backend.md](backend.md).
 
 ## Frontend

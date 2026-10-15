@@ -9,6 +9,7 @@ import {
   LayoutDashboardIcon,
   type LucideIcon,
   MicVocalIcon,
+  ShieldCheckIcon,
   TagsIcon,
   UsersIcon,
 } from "lucide-react"
@@ -37,6 +38,7 @@ const sections: Section[] = [
   { title: "Tracks", to: "/tracks", icon: AudioLinesIcon },
   { title: "Labels", to: "/labels", icon: DiscIcon },
   { title: "Files", to: "/files", icon: FilesIcon },
+  { title: "Library check", to: "/library-check", icon: ShieldCheckIcon },
 ]
 
 // The lists the user manages

@@ -15,8 +15,10 @@ const n = (id: string | number) => Number(id)
 
 /** The fields every tag type resolves the same way. */
 const tagFields = {
-  releaseCount: (tag: Tag, _args: unknown, { tagging }: Context) =>
-    tagging.tagReleaseCount(tag.type, tag.id),
+  releaseCount: async (tag: Tag, _args: unknown, { tagging }: Context) =>
+    (await tagging.tagUsage(tag.type, tag.id)).releases,
+  trackCount: async (tag: Tag, _args: unknown, { tagging }: Context) =>
+    (await tagging.tagUsage(tag.type, tag.id)).tracks,
   blockers: (tag: Tag, _args: unknown, { tagging }: Context) =>
     tagging.tagBlockers(tag.type, tag.id),
   multiValueReleases: async (
@@ -24,16 +26,36 @@ const tagFields = {
     args: { page: number; perPage: number },
     { tagging, loaders }: Context
   ) => {
-    const { items, total } = await tagging.multiValueReleases(
+    const { items, total } = await tagging.multiValueOwners(
+      "release",
       tag.type,
       tag.id,
       args
     )
     return { items: await loadAll(loaders.release, items), total }
   },
+  multiValueTracks: async (
+    tag: Tag,
+    args: { page: number; perPage: number },
+    { tagging, loaders }: Context
+  ) => {
+    const { items, total } = await tagging.multiValueOwners(
+      "track",
+      tag.type,
+      tag.id,
+      args
+    )
+    return { items: await loadAll(loaders.track, items), total }
+  },
 }
 
-/** Release list filters, from the API's input. */
+type TagValuesArg = { type: Tag["type"]; tagId: string; values: string[] }
+
+/** An owner's tags, from the API's input. */
+export const tagValues = (inputs: TagValuesArg[]) =>
+  inputs.map((input) => ({ ...input, tagId: n(input.tagId) }))
+
+/** List filters, from the API's input. */
 export function tagFilters(
   tagging: Tagging,
   inputs: {
@@ -45,7 +67,7 @@ export function tagFilters(
     max?: string | null
   }[]
 ) {
-  return tagging.releaseFilters(
+  return tagging.tagFilters(
     inputs.map((input) => ({ ...input, tagId: n(input.tagId) }))
   )
 }
@@ -74,16 +96,21 @@ export const taggingResolvers: Resolvers = {
     setReleaseTags: async (_parent, { id, tags }, { catalog, tagging }) => {
       const release = await catalog.getRelease(n(id))
       if (!release) throw new Error(`There's no release ${id}`)
-      await tagging.setReleaseTags(
-        release.id,
-        tags.map((tag) => ({
-          type: tag.type,
-          tagId: n(tag.tagId),
-          values: tag.values,
-        }))
-      )
+      await tagging.setTags("release", release.id, tagValues(tags))
       return release
     },
+    setTagOnReleases: (_parent, { ids, type, tagId, value }, { tagging }) =>
+      tagging.setTagOnReleases(ids.map(n), { type, tagId: n(tagId), value }),
+    removeTagFromReleases: (
+      _parent,
+      { ids, type, tagId, value },
+      { tagging }
+    ) =>
+      tagging.removeTagFromReleases(ids.map(n), {
+        type,
+        tagId: n(tagId),
+        value,
+      }),
   },
 
   Tag: {
@@ -96,16 +123,18 @@ export const taggingResolvers: Resolvers = {
   NumberTag: tagFields,
   DateTag: tagFields,
 
-  ReleaseTag: {
-    tag: (releaseTag, _args, { loaders }) =>
-      loadRequired(loaders.tag[releaseTag.type], releaseTag.tagId),
-    values: (releaseTag, _args, { tagging }) =>
-      releaseTag.values.map((value) =>
-        tagging.formatValue(releaseTag.type, value)
-      ),
+  TagValues: {
+    tag: (owned, _args, { loaders }) =>
+      loadRequired(loaders.tag[owned.type], owned.tagId),
+    values: (owned, _args, { tagging }) =>
+      owned.values.map((value) => tagging.formatValue(owned.type, value)),
   },
 
   Release: {
     tags: (release, _args, { loaders }) => loaders.releaseTags.load(release.id),
+  },
+
+  Track: {
+    tags: (track, _args, { loaders }) => loaders.trackTags.load(track.id),
   },
 }

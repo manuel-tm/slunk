@@ -1,12 +1,20 @@
-import { useQuery } from "@apollo/client/react"
+import { useApolloClient, useQuery } from "@apollo/client/react"
+import { useState } from "react"
+import { toast } from "sonner"
 
 import { ListLayout, PER_PAGE } from "@/components/list/list-layout"
 import { LabelPicker, ListItemPicker } from "@/components/pickers"
 import { ReleaseTable } from "@/components/release-table"
 import { graphql } from "@/gql"
 import { useListParams } from "@/hooks/use-list-params"
-import { tagFilterInput, tagFiltersOf } from "@/lib/tags"
-import { TagFilters } from "@/routes/releases/tag-filters"
+import {
+  tagFilterInput,
+  tagFilterRefs,
+  tagFiltersOf,
+  tagNames,
+} from "@/lib/tags"
+import { TagFilters } from "@/components/tag-filters"
+import { BulkEditBar } from "@/routes/releases/bulk-edit"
 
 const ReleasesQuery = graphql(`
   query Releases(
@@ -89,10 +97,28 @@ const ReleasesQuery = graphql(`
   }
 `)
 
+const ReleaseIdsQuery = graphql(`
+  query ReleaseIds(
+    $q: String
+    $format: ID
+    $medium: ID
+    $label: ID
+    $tags: [TagFilterInput!]!
+  ) {
+    releaseIds(
+      q: $q
+      format: $format
+      medium: $medium
+      label: $label
+      tags: $tags
+    )
+  }
+`)
+
 /**
  * `/releases` (design §7.6). The filters combine: `?format=3&medium=4` is
  * "EPs on vinyl", and `?text.3=Rock&number.5.min=8` is "Genre is Rock and
- * Score ≥ 8".
+ * Score ≥ 8". Rows can be selected, across pages, for a bulk edit.
  */
 export function ReleaseList() {
   const list = useListParams()
@@ -100,14 +126,7 @@ export function ReleaseList() {
   const medium = list.params.get("medium")
   const label = list.params.get("label")
   const tagFilters = tagFiltersOf(list.params)
-  const tagRefs = [
-    ...new Map(
-      tagFilters.map((f) => [
-        `${f.type}:${f.tagId}`,
-        { type: f.type, id: f.tagId },
-      ])
-    ).values(),
-  ]
+  const tagRefs = tagFilterRefs(tagFilters)
   const { data, error } = useQuery(ReleasesQuery, {
     variables: {
       page: list.page,
@@ -128,9 +147,43 @@ export function ReleaseList() {
       withTags: tagRefs.length > 0,
     },
   })
-  const tagNames = new Map(
-    (data?.filterTags ?? []).map((tag) => [`${tag.type}:${tag.id}`, tag.name])
-  )
+  const client = useApolloClient()
+  const [selected, setSelected] = useState(new Set<string>())
+  const [selectingAll, setSelectingAll] = useState(false)
+
+  function select(ids: string[], on: boolean) {
+    setSelected((current) => {
+      const next = new Set(current)
+      for (const id of ids) {
+        if (on) next.add(id)
+        else next.delete(id)
+      }
+      return next
+    })
+  }
+
+  /** Every release the filters match, on any page. */
+  async function selectAll() {
+    setSelectingAll(true)
+    try {
+      const { data: ids } = await client.query({
+        query: ReleaseIdsQuery,
+        variables: {
+          q: list.q,
+          format,
+          medium,
+          label,
+          tags: tagFilters.map(tagFilterInput),
+        },
+        fetchPolicy: "network-only",
+      })
+      if (ids) setSelected(new Set(ids.releaseIds))
+    } catch {
+      toast.error("Can't select them all")
+    } finally {
+      setSelectingAll(false)
+    }
+  }
 
   return (
     <ListLayout
@@ -165,7 +218,7 @@ export function ReleaseList() {
           </div>
           <TagFilters
             filters={tagFilters}
-            names={tagNames}
+            names={tagNames(data?.filterTags)}
             onAdd={list.append}
             onRemove={(filter) => list.remove(filter.key, filter.value)}
           />
@@ -175,6 +228,15 @@ export function ReleaseList() {
       error={error}
       emptyText="No releases yet. Create one, or import a folder."
     >
+      {selected.size > 0 && (
+        <BulkEditBar
+          selected={[...selected]}
+          total={data?.releases.total ?? 0}
+          selectingAll={selectingAll}
+          onSelectAll={selectAll}
+          onClear={() => setSelected(new Set())}
+        />
+      )}
       <ReleaseTable
         releases={data?.releases.items ?? []}
         columns={[
@@ -193,6 +255,7 @@ export function ReleaseList() {
         ]}
         sort={list.sort}
         onSort={(sort) => list.update({ sort })}
+        selection={{ selected, onChange: select }}
       />
     </ListLayout>
   )

@@ -1,14 +1,16 @@
-// The tagging context: tag definitions, and their values on releases
-// (design §4.3 Tags, §6).
+// The tagging context: tag definitions, and their values on releases and
+// tracks (design §4.3 Tags, §6).
 import { formatDate, lastDay, parseDate } from "./dates.ts"
 import { type ListArgs, pagingOf, searchOf, sortOf } from "./paging.ts"
 import {
-  type ReleaseTagValue,
   type Tag,
   type TagFilter,
   type TaggingStore,
+  type TagOwner,
+  type TagsRepository,
   type TagType,
   type TagValue,
+  type TagValueRow,
   TAG_TYPES,
 } from "./tagging/repository.ts"
 
@@ -16,13 +18,13 @@ export type Tagging = ReturnType<typeof createTagging>
 
 export type TagInput = { name: string; multiple: boolean }
 
-/** A tag's values on a release, as the user typed them. */
-export type ReleaseTagInput = { type: TagType; tagId: number; values: string[] }
+/** A tag's values on a release or track, as the user typed them. */
+export type TagValuesInput = { type: TagType; tagId: number; values: string[] }
 
 /**
- * A release list filter as the list's URL has it. Text takes `equals` or
- * `contains`. Numbers and dates take `equals`, or a range from `min` to `max`.
- * A date is its whole year, month or day: `max: 2006` includes Dec 31, 2006.
+ * A list filter as the list's URL has it. Text takes `equals` or `contains`.
+ * Numbers and dates take `equals`, or a range from `min` to `max`. A date is
+ * its whole year, month or day: `max: 2006` includes Dec 31, 2006.
  */
 export type TagFilterInput = {
   type: TagType
@@ -33,8 +35,8 @@ export type TagFilterInput = {
   max?: string | null
 }
 
-/** A release's values of one tag, in the order they were set. */
-export type ReleaseTag = { type: TagType; tagId: number; values: TagValue[] }
+/** An owner's values of one tag, in the order they were set. */
+export type OwnerTag = { type: TagType; tagId: number; values: TagValue[] }
 
 export function createTagging({ store }: { store: TaggingStore }) {
   const notFound = (type: TagType, id: number) =>
@@ -51,8 +53,75 @@ export function createTagging({ store }: { store: TaggingStore }) {
     }
   }
 
-  const releaseCount = (type: TagType, id: number) =>
-    store.tags.releaseCount(type, id)
+  /** "2 releases and 1 track", leaving out a count of 0. */
+  function owners({ releases, tracks }: { releases: number; tracks: number }) {
+    return [
+      releases && count(releases, "release"),
+      tracks && count(tracks, "track"),
+    ]
+      .filter(Boolean)
+      .join(" and ")
+  }
+
+  /**
+   * Replaces an owner's tag values, with the repositories of a transaction
+   * that's already running. Blank values are left out, so a tag with none is
+   * removed. Values that repeat, ignoring case, are kept once.
+   */
+  async function setTagsWith(
+    { tags: repository }: { tags: TagsRepository },
+    owner: TagOwner,
+    id: number,
+    input: TagValuesInput[]
+  ) {
+    const tags = new Map<string, Tag>()
+    for (const type of TAG_TYPES) {
+      const ids = input.filter((i) => i.type === type).map((i) => i.tagId)
+      for (const tag of await repository.getMany(type, ids)) {
+        tags.set(`${type}:${tag.id}`, tag)
+      }
+    }
+
+    // Values by tag, each kept once
+    const byTag = new Map<Tag, Map<string, TagValue>>()
+    for (const { type, tagId, values } of input) {
+      const tag = tags.get(`${type}:${tagId}`)
+      if (!tag) throw notFound(type, tagId)
+      const parsed = byTag.get(tag) ?? new Map<string, TagValue>()
+      byTag.set(tag, parsed)
+      for (const text of values) {
+        if (!text.trim()) continue
+        const value = parseValue(tag, text)
+        if (!parsed.has(sameValueKey(value))) {
+          parsed.set(sameValueKey(value), value)
+        }
+      }
+    }
+
+    const rows: TagValueRow[] = []
+    for (const [tag, values] of byTag) {
+      if (!tag.multiple && values.size > 1) {
+        throw new Error(`${tag.name} takes one value`)
+      }
+      for (const value of values.values()) {
+        rows.push({ type: tag.type, tagId: tag.id, value })
+      }
+    }
+    await repository.setValues(owner, id, rows)
+  }
+
+  /** A tag and one value for it, parsed, for a bulk edit. */
+  async function tagAndValue(
+    tx: TaggingStore,
+    type: TagType,
+    tagId: number,
+    text: string | null | undefined
+  ) {
+    const tag = await tx.tags.get(type, tagId)
+    if (!tag) throw notFound(type, tagId)
+    const value = text?.trim() ? parseValue(tag, text) : undefined
+    return { tag, value }
+  }
 
   return {
     listTags: (args: ListArgs & { type?: TagType | null }) =>
@@ -81,15 +150,20 @@ export function createTagging({ store }: { store: TaggingStore }) {
         const current = await tx.tags.get(type, id)
         if (!current) throw notFound(type, id)
         await checkName(tx, type, name)
-        // The database refuses it too. This says how many releases are why.
+        // The database refuses it too. This says how many owners are why.
         if (current.multiple && !input.multiple) {
-          const { total } = await tx.tags.multiValueReleases(type, id, {
-            offset: 0,
-            limit: 1,
-          })
-          if (total > 0) {
+          const first = { offset: 0, limit: 1 }
+          const several = {
+            releases: (
+              await tx.tags.multiValueOwners("release", type, id, first)
+            ).total,
+            tracks: (await tx.tags.multiValueOwners("track", type, id, first))
+              .total,
+          }
+          if (several.releases + several.tracks > 0) {
+            const one = several.releases + several.tracks === 1
             throw new Error(
-              `${count(total, "release")} ${total === 1 ? "has" : "have"} several values for this tag. Leave one value on each before making it single-value.`
+              `${owners(several)} ${one ? "has" : "have"} several values for this tag. Leave one value on each before making it single-value.`
             )
           }
         }
@@ -102,37 +176,43 @@ export function createTagging({ store }: { store: TaggingStore }) {
       })
     },
 
-    tagReleaseCount: releaseCount,
+    /** How many releases and tracks have the tag. */
+    tagUsage: (type: TagType, id: number) => store.tags.usage(type, id),
 
     async tagBlockers(type: TagType, id: number) {
-      const releases = await releaseCount(type, id)
-      return releases ? [`Set on ${count(releases, "release")}`] : []
+      const usage = await store.tags.usage(type, id)
+      return usage.releases || usage.tracks ? [`Set on ${owners(usage)}`] : []
     },
 
     async deleteTag(type: TagType, id: number) {
-      const releases = await releaseCount(type, id)
-      if (releases > 0) {
-        throw new Error(`The tag is set on ${count(releases, "release")}`)
+      const usage = await store.tags.usage(type, id)
+      if (usage.releases || usage.tracks) {
+        throw new Error(`The tag is set on ${owners(usage)}`)
       }
       await store.tags.delete(type, id)
     },
 
-    /** A text tag's values, with how many releases have each. */
+    /** A text tag's values, with how many releases and tracks have each. */
     tagValues: (id: number, args: ListArgs) =>
       store.tags.values(id, { ...pagingOf(args), search: searchOf(args.q) }),
 
-    /** Releases with several values, which keep a tag from being single-value. */
-    multiValueReleases: (type: TagType, id: number, args: ListArgs) =>
-      store.tags.multiValueReleases(type, id, pagingOf(args)),
+    /** Owners with several values, which keep a tag from being single-value. */
+    multiValueOwners: (
+      owner: TagOwner,
+      type: TagType,
+      id: number,
+      args: ListArgs
+    ) => store.tags.multiValueOwners(owner, type, id, pagingOf(args)),
 
-    /** Each release's tags, ordered by name, with their values in order. */
-    async releaseTagsOf(
-      releaseIds: readonly number[]
-    ): Promise<Map<number, ReleaseTag[]>> {
-      const byRelease = await store.tags.valuesOf(releaseIds)
-      const result = new Map<number, ReleaseTag[]>()
-      for (const [releaseId, values] of byRelease) {
-        const tags: ReleaseTag[] = []
+    /** Each owner's tags, ordered by name, with their values in order. */
+    async tagsOf(
+      owner: TagOwner,
+      ids: readonly number[]
+    ): Promise<Map<number, OwnerTag[]>> {
+      const byOwner = await store.tags.valuesOf(owner, ids)
+      const result = new Map<number, OwnerTag[]>()
+      for (const [ownerId, values] of byOwner) {
+        const tags: OwnerTag[] = []
         for (const { type, tagId, value } of values) {
           const last = tags.at(-1)
           if (last?.type === type && last.tagId === tagId) {
@@ -141,56 +221,61 @@ export function createTagging({ store }: { store: TaggingStore }) {
             tags.push({ type, tagId, values: [value] })
           }
         }
-        result.set(releaseId, tags)
+        result.set(ownerId, tags)
       }
       return result
     },
 
+    /** Replaces every tag value on a release or track. */
+    setTags: (owner: TagOwner, id: number, input: TagValuesInput[]) =>
+      store.transaction((tx) => setTagsWith(tx, owner, id, input)),
+
+    setTagsWith,
+
     /**
-     * Replaces every tag value on a release. Blank values are left out, so a
-     * tag with none is removed. Values that repeat, ignoring case, are kept
-     * once.
+     * Sets a tag on many releases at once (a bulk edit): a single-value tag's
+     * value is replaced, and a multi-value tag gets the value added. Returns
+     * how many releases changed.
      */
-    async setReleaseTags(releaseId: number, input: ReleaseTagInput[]) {
-      await store.transaction(async (tx) => {
-        const tags = new Map<string, Tag>()
-        for (const type of TAG_TYPES) {
-          const ids = input.filter((i) => i.type === type).map((i) => i.tagId)
-          for (const tag of await tx.tags.getMany(type, ids)) {
-            tags.set(`${type}:${tag.id}`, tag)
-          }
-        }
-
-        // Values by tag, each kept once
-        const byTag = new Map<Tag, Map<string, TagValue>>()
-        for (const { type, tagId, values } of input) {
-          const tag = tags.get(`${type}:${tagId}`)
-          if (!tag) throw notFound(type, tagId)
-          const parsed = byTag.get(tag) ?? new Map<string, TagValue>()
-          byTag.set(tag, parsed)
-          for (const text of values) {
-            if (!text.trim()) continue
-            const value = parseValue(tag, text)
-            if (!parsed.has(sameValueKey(value))) {
-              parsed.set(sameValueKey(value), value)
-            }
-          }
-        }
-
-        const rows: ReleaseTagValue[] = []
-        for (const [tag, values] of byTag) {
-          if (!tag.multiple && values.size > 1) {
-            throw new Error(`${tag.name} takes one value`)
-          }
-          for (const value of values.values()) {
-            rows.push({ type: tag.type, tagId: tag.id, value })
-          }
-        }
-        await tx.tags.setValues(releaseId, rows)
+    setTagOnReleases(
+      releaseIds: number[],
+      { type, tagId, value }: { type: TagType; tagId: number; value: string }
+    ) {
+      return store.transaction(async (tx) => {
+        const parsed = await tagAndValue(tx, type, tagId, value)
+        if (parsed.value === undefined) throw new Error("Type a value to set")
+        return tx.tags.addValue(
+          "release",
+          releaseIds,
+          { type, tagId, value: parsed.value },
+          !parsed.tag.multiple
+        )
       })
     },
 
-    releaseFilters: (inputs: TagFilterInput[]) => inputs.map(filterOf),
+    /**
+     * Removes a tag from many releases: one of its values, or with no value,
+     * all of them. Returns how many releases changed.
+     */
+    removeTagFromReleases(
+      releaseIds: number[],
+      {
+        type,
+        tagId,
+        value,
+      }: { type: TagType; tagId: number; value?: string | null }
+    ) {
+      return store.transaction(async (tx) => {
+        const parsed = await tagAndValue(tx, type, tagId, value)
+        return tx.tags.removeValues("release", releaseIds, {
+          type,
+          tagId,
+          value: parsed.value,
+        })
+      })
+    },
+
+    tagFilters: (inputs: TagFilterInput[]) => inputs.map(filterOf),
 
     /** A value as the API shows it: text, `8.5`, or `2006-01-10`. */
     formatValue(type: TagType, value: TagValue): string {

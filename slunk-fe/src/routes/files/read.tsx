@@ -1,10 +1,11 @@
 import { useMutation, useQuery } from "@apollo/client/react"
 import { CircleAlertIcon, ExternalLinkIcon } from "lucide-react"
-import { Link, useNavigate, useParams } from "react-router"
+import { useNavigate, useParams } from "react-router"
 import { toast } from "sonner"
 
 import { ButtonLink } from "@/components/button-link"
 import { FILE_TYPE_LABELS } from "@/components/file-type"
+import { FileUses } from "@/components/file-uses"
 import { PageHeader } from "@/components/page-header"
 import { QueryError } from "@/components/query-error"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
@@ -23,7 +24,7 @@ import { Button, buttonVariants } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { graphql } from "@/gql"
-import type { FileQuery, FileUseKind } from "@/gql/graphql"
+import type { FileQuery } from "@/gql/graphql"
 import { formatDateTime, formatSize } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import { NotFound } from "@/routes/not-found"
@@ -56,16 +57,6 @@ const DeleteFileMutation = graphql(`
     deleteFile(id: $id)
   }
 `)
-
-const USE_LABELS: Record<FileUseKind, string> = {
-  track_audio: "Audio of track",
-  release_cover: "Cover of release",
-  artist_picture: "Picture of artist",
-  label_picture: "Logo of label",
-  release_link: "Linked to release",
-  artist_link: "Linked to artist",
-  track_link: "Linked to track",
-}
 
 type File = NonNullable<FileQuery["file"]>
 
@@ -194,7 +185,7 @@ function Uses({ file }: { file: File }) {
         {file.uses.length === 0 ? (
           <p className="text-muted-foreground">Nothing uses this file yet.</p>
         ) : (
-          <UseList uses={file.uses} />
+          <FileUses uses={file.uses} />
         )}
         {file.type === "music" &&
           !file.uses.some((use) => use.kind === "track_audio") && (
@@ -209,37 +200,6 @@ function Uses({ file }: { file: File }) {
           )}
       </CardContent>
     </Card>
-  )
-}
-
-const USE_URLS: Record<FileUseKind, string> = {
-  track_audio: "/tracks",
-  release_cover: "/releases",
-  artist_picture: "/artists",
-  label_picture: "/labels",
-  release_link: "/releases",
-  artist_link: "/artists",
-  track_link: "/tracks",
-}
-
-function UseList({ uses }: { uses: File["uses"] }) {
-  return (
-    <ul className="flex flex-col gap-1">
-      {uses.map((use) => (
-        <li key={`${use.kind}-${use.entityId}`}>
-          <span className="text-muted-foreground">{USE_LABELS[use.kind]}</span>{" "}
-          <Link
-            to={`${USE_URLS[use.kind]}/${use.entityId}`}
-            className="hover:underline"
-          >
-            {use.name}
-          </Link>
-          {use.note && (
-            <span className="text-muted-foreground"> ({use.note})</span>
-          )}
-        </li>
-      ))}
-    </ul>
   )
 }
 
@@ -276,7 +236,7 @@ function DeleteFile({ file }: { file: File }) {
         </AlertDialogHeader>
         {used && (
           <div className="text-xs">
-            <UseList uses={file.uses} />
+            <FileUses uses={file.uses} />
           </div>
         )}
         {error && <QueryError error={error} title="Can't delete it" />}

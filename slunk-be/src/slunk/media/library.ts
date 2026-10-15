@@ -80,15 +80,24 @@ export function createLibrary(dbPath: string) {
   async function scanFolder(path: string): Promise<DiskFile[]> {
     const files: DiskFile[] = []
     async function walk(folder: string) {
-      for (const entry of await read(folder, normalize(folder))) {
-        const entryPath = join(folder, entry.name)
-        if (skipped(entry, entryPath)) continue
-        if (entry.isDirectory()) {
-          await walk(entryPath)
-        } else if (entry.isFile() || entry.isSymbolicLink()) {
-          const info = await stat(entryPath).catch(() => null)
-          if (info?.isFile()) files.push(diskFile(entry.name, entryPath, info))
-        }
+      const entries = (await read(folder, normalize(folder))).filter(
+        (entry) => !skipped(entry, join(folder, entry.name))
+      )
+      // A folder's files are read together, which is much faster on a big
+      // library than one after another
+      await Promise.all(
+        entries.map(async (entry) => {
+          const entryPath = join(folder, entry.name)
+          if (entry.isFile() || entry.isSymbolicLink()) {
+            const info = await stat(entryPath).catch(() => null)
+            if (info?.isFile()) {
+              files.push(diskFile(entry.name, entryPath, info))
+            }
+          }
+        })
+      )
+      for (const entry of entries) {
+        if (entry.isDirectory()) await walk(join(folder, entry.name))
       }
     }
     await walk(absolute(normalize(path)))
@@ -114,6 +123,15 @@ export function createLibrary(dbPath: string) {
     return info?.isFile() ?? false
   }
 
+  /** A file's size and mtime, as registering reads them, or null if it's gone. */
+  async function statFile(
+    path: string
+  ): Promise<{ sizeBytes: number; mtime: number } | null> {
+    const info = await stat(absolute(path)).catch(() => null)
+    if (!info?.isFile()) return null
+    return { sizeBytes: info.size, mtime: Math.floor(info.mtimeMs / 1000) }
+  }
+
   function diskFile(name: string, file: string, info: Stats): DiskFile {
     return {
       name,
@@ -123,7 +141,15 @@ export function createLibrary(dbPath: string) {
     }
   }
 
-  return { normalize, absolute, listFolder, scanFolder, readFacts, exists }
+  return {
+    normalize,
+    absolute,
+    listFolder,
+    scanFolder,
+    readFacts,
+    exists,
+    statFile,
+  }
 }
 
 async function read(folder: string, shown: string): Promise<Dirent[]> {

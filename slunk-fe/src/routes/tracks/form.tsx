@@ -14,12 +14,20 @@ import { PageHeader } from "@/components/page-header"
 import type { Option } from "@/components/picker"
 import { ArtistPicker, FilePicker, ReleasePicker } from "@/components/pickers"
 import { QueryError } from "@/components/query-error"
+import {
+  type TagRow,
+  TagsEditor,
+  tagRows,
+  tagValuesInput,
+} from "@/components/tags-editor"
 import { Button } from "@/components/ui/button"
 import {
   Field,
   FieldDescription,
   FieldGroup,
   FieldLabel,
+  FieldLegend,
+  FieldSet,
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -73,6 +81,15 @@ const TrackFormQuery = graphql(`
           name: path
         }
       }
+      tags {
+        tag {
+          id
+          type
+          name
+          multiple
+        }
+        values
+      }
     }
     prefillRelease: release(id: $releaseId) @include(if: $withRelease) {
       id
@@ -113,6 +130,7 @@ type Values = {
   features: Option[]
   credits: CreditRow[]
   links: FileLinkRow[]
+  tags: TagRow[]
 }
 
 /**
@@ -154,6 +172,7 @@ export function TrackForm() {
             file: link.file,
             note: link.note ?? "",
           })),
+          tags: tagRows(track.tags),
         }
       : {
           release: data.prefillRelease ?? null,
@@ -168,6 +187,7 @@ export function TrackForm() {
           features: [],
           credits: [],
           links: [],
+          tags: [],
         }
 
   return (
@@ -226,6 +246,7 @@ function Form({ id, initial }: { id?: string; initial: Values }) {
             artistId: c.artist.id,
           })),
           files: fileLinksInput(values.links),
+          tags: tagValuesInput(values.tags),
         }
         try {
           const saved = id
@@ -333,6 +354,10 @@ function Form({ id, initial }: { id?: string; initial: Values }) {
             onChange={(links) => set({ links })}
           />
         </Field>
+        <FieldSet>
+          <FieldLegend variant="label">Tags</FieldLegend>
+          <TagsEditor rows={values.tags} onChange={(tags) => set({ tags })} />
+        </FieldSet>
         <div className="flex gap-2">
           <Button
             type="submit"

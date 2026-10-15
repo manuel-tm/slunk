@@ -28,8 +28,8 @@ import {
 const TEXT_OPS = { equals: "is", contains: "contains" }
 
 /**
- * The release list's tag filters (design §7.6): a chip for each, and a
- * button that adds one. They all have to match.
+ * A list's tag filters (design §7.6), on releases or tracks: a chip for
+ * each, and a button that adds one. They all have to match.
  */
 export function TagFilters({
   filters,

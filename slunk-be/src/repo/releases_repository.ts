@@ -8,6 +8,7 @@ import {
 } from "kysely"
 import type {
   Release,
+  ReleaseFilters,
   ReleaseLink,
   ReleasesRepository,
   ReleaseValues,
@@ -33,22 +34,28 @@ const LINKS = {
 } as const
 
 export function createReleasesRepository(db: Kysely<DB>): ReleasesRepository {
+  /** The releases that match a list's search and filters. */
+  function filtered(query: ReleaseFilters) {
+    let select = db.selectFrom("releases")
+    if (query.search) select = select.where(contains("title", query.search))
+    for (const [link, id] of [
+      ["formats", query.format],
+      ["media", query.medium],
+      ["labels", query.label],
+      ["artists", query.artist],
+    ] as const) {
+      if (id !== undefined) select = select.where(linkedTo(link, id))
+    }
+    for (const filter of query.tags ?? []) {
+      select = select.where(tagMatches("release", filter))
+    }
+    return select
+  }
+
   return {
     async list(query) {
-      const { offset, limit, sort, descending, search } = query
-      let select = db.selectFrom("releases")
-      if (search) select = select.where(contains("title", search))
-      for (const [link, id] of [
-        ["formats", query.format],
-        ["media", query.medium],
-        ["labels", query.label],
-        ["artists", query.artist],
-      ] as const) {
-        if (id !== undefined) select = select.where(linkedTo(link, id))
-      }
-      for (const filter of query.tags ?? []) {
-        select = select.where(tagMatches(filter))
-      }
+      const { offset, limit, sort, descending } = query
+      const select = filtered(query)
 
       const { total } = await select
         .select((eb) => eb.fn.countAll<number>().as("total"))
@@ -70,6 +77,14 @@ export function createReleasesRepository(db: Kysely<DB>): ReleasesRepository {
         .offset(offset)
         .execute()
       return { items: rows.map(toRelease), total }
+    },
+
+    async ids(query) {
+      const rows = await filtered(query)
+        .select("id")
+        .orderBy("id", "desc")
+        .execute()
+      return rows.map((row) => row.id)
     },
 
     async get(id) {
@@ -157,6 +172,20 @@ export function createReleasesRepository(db: Kysely<DB>): ReleasesRepository {
           values (${releaseId}, ${id}${positioned ? sql`, ${position}` : sql``})
         `.execute(db)
       }
+    },
+
+    async withoutArtists() {
+      const rows = await db
+        .selectFrom("releases")
+        .selectAll()
+        .where(
+          sql<SqlBool>`not exists (
+            select 1 from artists_releases where release_id = releases.id
+          )`
+        )
+        .orderBy(sql`title collate nocase`)
+        .execute()
+      return rows.map(toRelease)
     },
 
     async trackCount(id) {

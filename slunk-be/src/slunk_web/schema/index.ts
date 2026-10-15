@@ -2,6 +2,7 @@ import { readdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import { catalogResolvers } from "./catalog.ts"
 import { healthResolvers } from "./health.ts"
+import { libraryCheckResolvers } from "./library_check.ts"
 import { mediaResolvers } from "./media.ts"
 import { taggingResolvers } from "./tagging.ts"
 
@@ -16,4 +17,5 @@ export const resolvers = [
   mediaResolvers,
   catalogResolvers,
   taggingResolvers,
+  libraryCheckResolvers,
 ]

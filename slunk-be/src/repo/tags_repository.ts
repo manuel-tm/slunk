@@ -1,21 +1,41 @@
 import { type Expression, type Kysely, type SqlBool, sql } from "kysely"
 import {
-  type ReleaseTagValue,
   type Tag,
-  TAG_TYPES,
   type TagFilter,
+  type TagOwner,
   type TagsRepository,
+  TAG_TYPES,
   type TagType,
+  type TagValueRow,
 } from "../slunk/tagging/repository.ts"
 import type { DB } from "./db_types.ts"
 import { chunks, contains, groupBy } from "./helpers.ts"
 
-/** Each type's definition table and value table (design §4.3 Tags). */
+/** Each type's definition table, and its value table per owner (design §4.3). */
 export const TAG_TABLES = {
-  text: { tags: "text_tags", values: "release_text_tags" },
-  number: { tags: "real_number_tags", values: "release_real_number_tags" },
-  date: { tags: "date_tags", values: "release_date_tags" },
+  text: {
+    tags: "text_tags",
+    release: "release_text_tags",
+    track: "track_text_tags",
+  },
+  number: {
+    tags: "real_number_tags",
+    release: "release_real_number_tags",
+    track: "track_real_number_tags",
+  },
+  date: {
+    tags: "date_tags",
+    release: "release_date_tags",
+    track: "track_date_tags",
+  },
 } as const
+
+/** A value table, as SQL. */
+const valueTable = (owner: TagOwner, type: TagType) =>
+  sql.table(TAG_TABLES[type][owner])
+
+/** A value table's owner column: `release_id` or `track_id`. */
+const ownerColumn = (owner: TagOwner) => sql.ref(`${owner}_id`)
 
 // The order types are listed in when names tie
 const RANK = { text: 0, number: 1, date: 2 }
@@ -28,8 +48,6 @@ type TagRow = { id: number; name: string; multiple: number }
  */
 export function createTagsRepository(db: Kysely<DB>): TagsRepository {
   const tags = (type: TagType) => TAG_TABLES[type].tags as "text_tags"
-  const values = (type: TagType) =>
-    TAG_TABLES[type].values as "release_text_tags"
 
   /** Every type's tags as one table, with a `type` column. */
   const allTags = (types: readonly TagType[]) =>
@@ -117,106 +135,161 @@ export function createTagsRepository(db: Kysely<DB>): TagsRepository {
       await db.deleteFrom(tags(type)).where("id", "=", id).execute()
     },
 
-    async releaseCount(type, id) {
-      const row = await db
-        .selectFrom(values(type))
-        .select(sql<number>`count(distinct release_id)`.as("count"))
-        .where("tag_id", "=", id)
-        .executeTakeFirstOrThrow()
-      return row.count
+    async usage(type, id) {
+      const count = async (owner: TagOwner) => {
+        const { rows } = await sql<{ count: number }>`
+          select count(distinct ${ownerColumn(owner)}) as count
+          from ${valueTable(owner, type)} where tag_id = ${id}
+        `.execute(db)
+        return rows[0]?.count ?? 0
+      }
+      return { releases: await count("release"), tracks: await count("track") }
     },
 
     async values(id, { offset, limit, search }) {
-      let query = db.selectFrom("release_text_tags").where("tag_id", "=", id)
-      if (search) query = query.where(contains("value", search))
+      const where = search ? sql`and ${contains("value", search)}` : sql``
       // Values compare ignoring case, so "Rock" and "rock" count as one
-      const { total } = await query
-        .select(sql<number>`count(distinct value)`.as("total"))
-        .executeTakeFirstOrThrow()
-      const rows = await query
-        .select(["value", sql<number>`count(*)`.as("releases")])
-        .groupBy("value")
-        .orderBy("releases", "desc")
-        .orderBy("value")
-        .limit(limit)
-        .offset(offset)
-        .execute()
-      return { items: rows, total }
+      const both = sql`(
+        select value, 1 as release, 0 as track from release_text_tags
+        where tag_id = ${id} ${where}
+        union all
+        select value, 0, 1 from track_text_tags
+        where tag_id = ${id} ${where}
+      )`
+      const { rows: counted } = await sql<{ total: number }>`
+        select count(distinct value collate nocase) as total from ${both}
+      `.execute(db)
+      const { rows } = await sql<{
+        value: string
+        releases: number
+        tracks: number
+      }>`
+        select value, sum(release) as releases, sum(track) as tracks
+        from ${both}
+        group by value collate nocase
+        order by count(*) desc, value collate nocase
+        limit ${limit} offset ${offset}
+      `.execute(db)
+      return { items: rows, total: counted[0]?.total ?? 0 }
     },
 
-    async multiValueReleases(type, id, { offset, limit }) {
-      const several = db
-        .selectFrom(values(type))
-        .select("release_id")
-        .where("tag_id", "=", id)
-        .groupBy("release_id")
-        .having(sql<number>`count(*)`, ">", 1)
-      const { total } = await db
-        .selectFrom(several.as("several"))
-        .select((eb) => eb.fn.countAll<number>().as("total"))
-        .executeTakeFirstOrThrow()
-      const rows = await several
-        .orderBy("release_id")
-        .limit(limit)
-        .offset(offset)
-        .execute()
-      return { items: rows.map((row) => row.release_id), total }
+    async multiValueOwners(owner, type, id, { offset, limit }) {
+      const several = sql`(
+        select ${ownerColumn(owner)} as id from ${valueTable(owner, type)}
+        where tag_id = ${id}
+        group by ${ownerColumn(owner)}
+        having count(*) > 1
+      )`
+      const { rows: counted } = await sql<{ total: number }>`
+        select count(*) as total from ${several}
+      `.execute(db)
+      const { rows } = await sql<{ id: number }>`
+        select id from ${several} order by id limit ${limit} offset ${offset}
+      `.execute(db)
+      return {
+        items: rows.map((row) => row.id),
+        total: counted[0]?.total ?? 0,
+      }
     },
 
-    async valuesOf(releaseIds) {
-      const rows: (ReleaseTagValue & { releaseId: number })[] = []
-      for (const chunk of chunks(releaseIds)) {
-        const { rows: found } = await sql<
-          ReleaseTagValue & { releaseId: number }
-        >`
-          select type, releaseId, tagId, value from (${sql.join(
+    async valuesOf(owner, ids) {
+      const rows: (TagValueRow & { ownerId: number })[] = []
+      for (const chunk of chunks(ids)) {
+        const { rows: found } = await sql<TagValueRow & { ownerId: number }>`
+          select type, ownerId, tagId, value from (${sql.join(
             TAG_TYPES.map(
               (type) => sql`
                 select ${type} as type, ${RANK[type]} as rank,
-                  v.release_id as releaseId, v.tag_id as tagId,
+                  v.${ownerColumn(owner)} as ownerId, v.tag_id as tagId,
                   v.value as value, t.name as name, v.id as valueId
-                from ${sql.table(TAG_TABLES[type].values)} v
+                from ${valueTable(owner, type)} v
                 join ${sql.table(TAG_TABLES[type].tags)} t on t.id = v.tag_id
-                where v.release_id in (${sql.join(chunk)})
+                where v.${ownerColumn(owner)} in (${sql.join(chunk)})
               `
             ),
             sql` union all `
           )})
-          order by releaseId, name collate nocase, rank, tagId, valueId
+          order by ownerId, name collate nocase, rank, tagId, valueId
         `.execute(db)
         rows.push(...found)
       }
       return groupBy(
         rows,
-        (row) => row.releaseId,
+        (row) => row.ownerId,
         ({ type, tagId, value }) => ({ type, tagId, value })
       )
     },
 
-    async setValues(releaseId, list) {
+    async setValues(owner, id, list) {
       for (const type of TAG_TYPES) {
-        await db
-          .deleteFrom(values(type))
-          .where("release_id", "=", releaseId)
-          .execute()
+        await sql`
+          delete from ${valueTable(owner, type)}
+          where ${ownerColumn(owner)} = ${id}
+        `.execute(db)
       }
       // Rows are inserted in order, so ids keep the order they were given in
       for (const { type, tagId, value } of list) {
-        await db
-          .insertInto(values(type))
-          .values({
-            release_id: releaseId,
-            tag_id: tagId,
-            value: value as string,
-          })
-          .execute()
+        await sql`
+          insert into ${valueTable(owner, type)}
+            (${ownerColumn(owner)}, tag_id, value)
+          values (${id}, ${tagId}, ${value})
+        `.execute(db)
       }
+    },
+
+    async addValue(owner, ids, { type, tagId, value }, replace) {
+      let changed = 0
+      for (const chunk of chunks(ids)) {
+        if (replace) {
+          // Same value, ignoring case for text, stays as it is
+          await sql`
+            delete from ${valueTable(owner, type)}
+            where ${ownerColumn(owner)} in (${sql.join(chunk)})
+              and tag_id = ${tagId} and value <> ${value}
+          `.execute(db)
+        }
+        // Owners that have the value already are skipped. (INSERT OR IGNORE
+        // wouldn't do: the single-value trigger aborts before the index.)
+        const result = await sql`
+          insert into ${valueTable(owner, type)}
+            (${ownerColumn(owner)}, tag_id, value)
+          select o.id, ${tagId}, ${value} from ${sql.table(`${owner}s`)} o
+          where o.id in (${sql.join(chunk)})
+            and not exists (
+              select 1 from ${valueTable(owner, type)} v
+              where v.${ownerColumn(owner)} = o.id
+                and v.tag_id = ${tagId} and v.value = ${value}
+            )
+          order by o.id
+        `.execute(db)
+        changed += Number(result.numAffectedRows ?? 0)
+      }
+      return changed
+    },
+
+    async removeValues(owner, ids, { type, tagId, value }) {
+      let changed = 0
+      const matches = (chunk: number[]) => sql`
+        ${ownerColumn(owner)} in (${sql.join(chunk)}) and tag_id = ${tagId}
+        ${value === undefined ? sql`` : sql`and value = ${value}`}
+      `
+      for (const chunk of chunks(ids)) {
+        const { rows } = await sql<{ count: number }>`
+          select count(distinct ${ownerColumn(owner)}) as count
+          from ${valueTable(owner, type)} where ${matches(chunk)}
+        `.execute(db)
+        changed += rows[0]?.count ?? 0
+        await sql`
+          delete from ${valueTable(owner, type)} where ${matches(chunk)}
+        `.execute(db)
+      }
+      return changed
     },
   }
 }
 
-/** A release list filter on a tag's values (design §7.6). */
-export function tagMatches(filter: TagFilter) {
+/** A list filter on a tag's values, for releases or tracks (design §7.6). */
+export function tagMatches(owner: TagOwner, filter: TagFilter) {
   const conditions: Expression<unknown>[] = [sql`tag_id = ${filter.tagId}`]
   if (filter.equals !== undefined) {
     conditions.push(sql`value = ${filter.equals}`)
@@ -227,8 +300,8 @@ export function tagMatches(filter: TagFilter) {
   if (filter.min !== undefined) conditions.push(sql`value >= ${filter.min}`)
   if (filter.max !== undefined) conditions.push(sql`value <= ${filter.max}`)
   // Uses the (tag_id, value) index
-  return sql<SqlBool>`releases.id in (
-    select release_id from ${sql.table(TAG_TABLES[filter.type].values)}
+  return sql<SqlBool>`${sql.ref(`${owner}s.id`)} in (
+    select ${ownerColumn(owner)} from ${valueTable(owner, filter.type)}
     where ${sql.join(conditions, sql` and `)}
   )`
 }

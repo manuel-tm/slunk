@@ -3,6 +3,7 @@ import { Link } from "react-router"
 import { Cover } from "@/components/cover"
 import { SortableHead } from "@/components/list/sortable-head"
 import { artistUrl, labelUrl, Names } from "@/components/names"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Table,
   TableBody,
@@ -62,10 +63,17 @@ const HEADS: Record<ReleaseColumn, string> = {
 
 const SORTABLE = new Set<ReleaseColumn>(["title", "released"])
 
+/** Checkboxes on the rows, for a bulk edit. */
+export type Selection = {
+  selected: Set<string>
+  onChange: (ids: string[], selected: boolean) => void
+}
+
 /**
  * The release table (design §7.6): the release list's, also shown on label
  * and artist pages with fewer columns. `withArtists` names every artist in
- * the title cell, as on an artist page.
+ * the title cell, as on an artist page. With `selection`, each row gets a
+ * checkbox, and the header one selects the page.
  */
 export function ReleaseTable({
   releases,
@@ -73,20 +81,34 @@ export function ReleaseTable({
   sort,
   onSort,
   withArtists = false,
+  selection,
 }: {
   releases: ReleaseRow[]
   columns: ReleaseColumn[]
   sort?: string | null
   onSort?: (sort: string | null) => void
   withArtists?: boolean
+  selection?: Selection
 }) {
   const names = (items: Named[] | undefined) =>
     items?.map((i) => i.name).join(", ")
+  const pageIds = releases.map((release) => release.id)
+  const onPage = pageIds.filter((id) => selection?.selected.has(id)).length
 
   return (
     <Table>
       <TableHeader>
         <TableRow>
+          {selection && (
+            <TableHead className="w-8">
+              <Checkbox
+                aria-label="Select this page"
+                checked={onPage > 0 && onPage === pageIds.length}
+                indeterminate={onPage > 0 && onPage < pageIds.length}
+                onCheckedChange={(on) => selection.onChange(pageIds, on)}
+              />
+            </TableHead>
+          )}
           {columns.map((column) =>
             onSort && SORTABLE.has(column) ? (
               <SortableHead
@@ -106,6 +128,15 @@ export function ReleaseTable({
       <TableBody>
         {releases.map((release) => (
           <TableRow key={release.id}>
+            {selection && (
+              <TableCell>
+                <Checkbox
+                  aria-label={`Select ${release.title}`}
+                  checked={selection.selected.has(release.id)}
+                  onCheckedChange={(on) => selection.onChange([release.id], on)}
+                />
+              </TableCell>
+            )}
             {columns.map((column) => (
               <TableCell
                 key={column}

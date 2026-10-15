@@ -4,7 +4,7 @@ import type {
 } from "../media/repository.ts"
 import type { ListQuery, Page } from "../paging.ts"
 import type { DatePrecision } from "../dates.ts"
-import type { TagFilter } from "../tagging/repository.ts"
+import type { TagFilter, TagsRepository } from "../tagging/repository.ts"
 
 export type Artist = {
   id: number
@@ -94,14 +94,17 @@ export interface LabelsRepository extends NamedRepository<Label> {
   releaseCount(id: number): Promise<number>
 }
 
-export type ReleaseQuery = ListQuery<"title" | "released"> & {
+/** A release list's search and filters. They all have to match. */
+export type ReleaseFilters = {
+  search?: string
   format?: number
   medium?: number
   label?: number
   artist?: number
-  /** Every filter has to match */
   tags?: TagFilter[]
 }
+
+export type ReleaseQuery = ListQuery<"title" | "released"> & ReleaseFilters
 
 export type ReleaseValues = Omit<Release, "id" | "insertedAt" | "updatedAt">
 
@@ -110,6 +113,8 @@ export type ReleaseLink = "artists" | "labels" | "formats" | "media"
 
 export interface ReleasesRepository {
   list(query: ReleaseQuery): Promise<Page<Release>>
+  /** Every matching release's id, newest first, for selecting them all */
+  ids(query: ReleaseFilters): Promise<number[]>
   get(id: number): Promise<Release | null>
   getMany(ids: readonly number[]): Promise<Release[]>
   /** Same title, ignoring case */
@@ -125,12 +130,16 @@ export interface ReleasesRepository {
   /** Replaces the links; their order is the display order */
   setLinks(link: ReleaseLink, releaseId: number, ids: number[]): Promise<void>
   trackCount(id: number): Promise<number>
+  /** Releases with no artist of their own, for the library check */
+  withoutArtists(): Promise<Release[]>
 }
 
 export type TrackValues = Omit<Track, "id" | "insertedAt" | "updatedAt">
 
 export interface TracksRepository {
-  list(query: ListQuery<"title"> & { release?: number }): Promise<Page<Track>>
+  list(
+    query: ListQuery<"title"> & { release?: number; tags?: TagFilter[] }
+  ): Promise<Page<Track>>
   get(id: number): Promise<Track | null>
   getMany(ids: readonly number[]): Promise<Track[]>
   /** The track each file is the audio of, by file id */
@@ -145,6 +154,11 @@ export interface TracksRepository {
   /** Own artists by track, in display order */
   artistsOf(trackIds: readonly number[]): Promise<Map<number, TrackArtist[]>>
   setArtists(trackId: number, artists: TrackArtist[]): Promise<void>
+  /**
+   * Tracks on various-artists releases with no non-featured artist of their
+   * own, so nobody performs them (design §4.3), for the library check
+   */
+  withoutPerformers(): Promise<Track[]>
 }
 
 export interface ListsRepository {
@@ -191,6 +205,8 @@ export interface CatalogStore {
   stats: StatsRepository
   files: FilesRepository
   fileLinks: FileLinksRepository
+  /** A track's tags are saved with the track, through tagging */
+  tags: TagsRepository
   /** Runs `fn` in one transaction, with repositories bound to it. */
   transaction<T>(fn: (store: CatalogStore) => Promise<T>): Promise<T>
 }

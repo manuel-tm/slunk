@@ -8,6 +8,7 @@ This is the schema as built, by these migrations in `slunk-be/priv/repo/migratio
 |---|---|
 | `20261011141955_create_baseline` | Every table, index and trigger, except those below |
 | `20261013060918_add_tag_value_rules` | The triggers that check date and number tag values |
+| `20261014052413_add_track_tags` | Tag values on tracks, and the `<type>_tags_multiple_off` triggers that check them too |
 
 The reasoning behind it is in [design §4](../design/1_introduction.md#4-data-model), and its appendices [A](../design/1_introduction.md#appendix-a-more-integrity-rules-in-the-database) and [D](../design/1_introduction.md#appendix-d-tag-values-are-checked-in-the-database). Every column's type is in `slunk-be/src/repo/db_types.ts`, which is generated from the database.
 
@@ -41,6 +42,7 @@ How to connect, migrate and seed: [development/backend.md](../development/backen
 | `files_releases`, `artists_files`, `files_tracks` | File links, each with an optional `note` |
 | `text_tags`, `real_number_tags`, `date_tags` | Tag definitions: `name`, and `multiple` (0 for single-value) |
 | `release_text_tags`, `release_real_number_tags`, `release_date_tags` | A release's tag values. `value` is `TEXT`, `REAL` or `INTEGER` (epoch seconds) |
+| `track_text_tags`, `track_real_number_tags`, `track_date_tags` | A track's tag values, built like the release ones, and using the same tag definitions |
 | `migrations` | Applied migrations (`name`, `applied_at`), kept by the migration runner |
 
 ## What the database enforces
@@ -55,12 +57,12 @@ How to connect, migrate and seed: [development/backend.md](../development/backen
 - **Text:** these values are non-empty, with no leading or trailing spaces:
   - names: of artists, labels, credit roles, formats, media and tag definitions;
   - titles: of releases and tracks;
-  - `catalog_number`, `release_text_tags.value` and file link notes.
+  - `catalog_number`, `release_text_tags.value`, `track_text_tags.value` and file link notes.
 
   A nullable one (`catalog_number`, `note`) may also be NULL.
 - **Unique ignoring case** (`COLLATE NOCASE`):
   - names of credit roles, formats, media and tag definitions;
-  - a text tag's value per release and tag.
+  - a text tag's value per release or track, and tag.
 
   `catalog_number` also compares ignoring case, but isn't unique. Artist names, label names and release titles aren't unique; their indexes ignore case, for search and sorting.
 - **Release dates:**
@@ -72,8 +74,8 @@ How to connect, migrate and seed: [development/backend.md](../development/backen
   - `file_id` is unique: a file is the audio of at most one track;
   - `track_number > 0`, `cd_number > 0`, `duration_ms >= 0`.
 - **Links:** an artist, label, format, medium or file appears at most once per release or track. A credit (release or track, artist, role) appears once. `position >= 0`.
-- **Tag values:**
-  - `(release_id, tag_id, value)` is unique;
+- **Tag values**, on releases and tracks alike:
+  - `(release_id, tag_id, value)` and `(track_id, tag_id, value)` are unique;
   - a date tag's value is a day, at midnight UTC, and a number tag's value is finite (triggers below).
 - **Flags:** `various_artists`, `featured` and `multiple` are 0 or 1.
 
@@ -84,17 +86,18 @@ Each trigger aborts the statement with the error shown.
 | Triggers | Error | Fires when |
 |---|---|---|
 | `release_<type>_tags_single_value_insert`, `…_update` | `single-value tag already set on this release` | A release would get a second value for a tag with `multiple = 0`: on insert, or on changing `release_id` or `tag_id`. Changing `value` always works. |
-| `<type>_tags_multiple_off` | `some releases have several values for this tag` | `multiple` changes from 1 to 0 while a release has several values |
+| `track_<type>_tags_single_value_insert`, `…_update` | `single-value tag already set on this track` | The same, for a track |
+| `<type>_tags_multiple_off` | `some releases or tracks have several values for this tag` | `multiple` changes from 1 to 0 while a release or a track has several values |
 | `tracks_file_is_music_insert`, `…_update` | `a track's file must be music` | A track's `file_id` points to a file that isn't `music` |
 | `files_type_stays_music` | `a track's file must stay music` | A track's file changes `type` |
 | `releases_cover_picture_is_image_insert`, `…_update` | `a release cover must be an image` | `cover_picture` points to a file that isn't an `image` |
 | `artists_picture_is_image_insert`, `…_update` | `an artist picture must be an image` | `picture` points to a file that isn't an `image` |
 | `labels_picture_is_image_insert`, `…_update` | `a label picture must be an image` | `picture` points to a file that isn't an `image` |
 | `files_type_stays_image` | `a cover or picture must stay an image` | A file used as a cover or picture changes `type` |
-| `release_date_tags_value_is_day_insert`, `…_update` | `a date tag's value must be a day, at midnight UTC` | `value % 86400 <> 0`, on insert or on changing `value` |
-| `release_real_number_tags_value_is_finite_insert`, `…_update` | `a number tag's value must be finite` | `value` is infinite, on insert or on changing `value`. NaN is already NULL, which `NOT NULL` rejects. |
+| `<owner>_date_tags_value_is_day_insert`, `…_update` | `a date tag's value must be a day, at midnight UTC` | `value % 86400 <> 0`, on insert or on changing `value` |
+| `<owner>_real_number_tags_value_is_finite_insert`, `…_update` | `a number tag's value must be finite` | `value` is infinite, on insert or on changing `value`. NaN is already NULL, which `NOT NULL` rejects. |
 
-`<type>` is `text`, `real_number` or `date`.
+`<type>` is `text`, `real_number` or `date`, and `<owner>` is `release` or `track`.
 
 ### Deletes
 
@@ -105,10 +108,10 @@ Foreign keys decide what a delete does.
   - a release with tracks;
   - an artist who is a release or track artist, or is credited;
   - a label on a release;
-  - a credit role, format, medium or tag definition in use.
+  - a credit role, format, medium or tag definition in use (a tag is in use on a release or a track).
 - **CASCADE:** deleting a row also deletes the link rows that describe it:
   - a release: its artists, labels, formats, media, credits, file links and tag values;
-  - a track: its artists, credits and file links;
+  - a track: its artists, credits, file links and tag values;
   - an artist: its file links.
 
 ## Starter rows

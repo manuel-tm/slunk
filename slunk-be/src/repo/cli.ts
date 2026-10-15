@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process"
 import { existsSync, rmSync, writeFileSync } from "node:fs"
 import { join, relative } from "node:path"
 import { seed } from "../../priv/repo/seeds.ts"
-import { databasePath } from "../config.ts"
+import { backupsToKeep, databasePath } from "../config.ts"
 import { openDb } from "./db.ts"
 import {
   backup,
@@ -32,10 +32,13 @@ switch (command) {
     gen(arg)
     break
   case "migrate":
-    report("Applied", await migrate(databasePath()))
+    report("Applied", await migrate(databasePath(), backupOptions()))
     break
   case "rollback":
-    report("Rolled back", await rollback(databasePath(), Number(arg ?? 1)))
+    report(
+      "Rolled back",
+      await rollback(databasePath(), Number(arg ?? 1), backupOptions())
+    )
     break
   case "status":
     await printStatus()
@@ -64,8 +67,9 @@ function gen(name: string | undefined) {
 }
 
 /** Prints what ran, then regenerates the DB types if the schema changed. */
-function report(verb: string, { names, backup }: Result) {
+function report(verb: string, { names, backup, removed }: Result) {
   if (backup) console.log(`Backed up to ${shown(backup)}`)
+  reportRemoved(removed)
   if (names.length === 0) console.log("Nothing to do.")
   for (const name of names) console.log(`${verb} ${name}`)
   if (names.length > 0) generateTypes()
@@ -107,14 +111,28 @@ async function seedDb() {
 async function reset() {
   const dbPath = databasePath()
   if (existsSync(dbPath)) {
-    console.log(`Backed up to ${shown(await backup(dbPath))}`)
+    const copy = await backup(dbPath, backupOptions())
+    console.log(`Backed up to ${shown(copy.backup)}`)
+    reportRemoved(copy.removed)
     for (const suffix of ["", "-wal", "-shm"]) {
       rmSync(dbPath + suffix, { force: true })
     }
     console.log(`Deleted ${dbPath}`)
   }
-  report("Applied", await migrate(dbPath))
+  report("Applied", await migrate(dbPath, backupOptions()))
   await seedDb()
+}
+
+function backupOptions() {
+  return { keepBackups: backupsToKeep() }
+}
+
+function reportRemoved(removed: string[]) {
+  if (removed.length > 0) {
+    console.log(
+      `Removed ${removed.length} old backup${removed.length === 1 ? "" : "s"}, keeping the last ${backupsToKeep()}`
+    )
+  }
 }
 
 /** A path relative to slunk-be/ when it's inside it, else absolute. */

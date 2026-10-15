@@ -43,7 +43,8 @@ export function createLoaders({
     artistFiles: grouped((ids) => media.fileLinksOf("artist", ids)),
     trackFiles: grouped((ids) => media.fileLinksOf("track", ids)),
     tag: { text: tag("text"), number: tag("number"), date: tag("date") },
-    releaseTags: grouped(tagging.releaseTagsOf),
+    releaseTags: grouped((ids) => tagging.tagsOf("release", ids)),
+    trackTags: grouped((ids) => tagging.tagsOf("track", ids)),
     trackOfFile: new DataLoader<number, Track | null>(async (ids) => {
       const tracks = await catalog.tracksOfFiles(ids)
       return ids.map((id) => tracks.get(id) ?? null)

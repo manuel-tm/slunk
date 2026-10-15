@@ -179,6 +179,20 @@ export interface TrackCredits {
   track_id: number;
 }
 
+export interface TrackDateTags {
+  id: Generated<number>;
+  tag_id: number;
+  track_id: number;
+  value: number;
+}
+
+export interface TrackRealNumberTags {
+  id: Generated<number>;
+  tag_id: number;
+  track_id: number;
+  value: number;
+}
+
 export interface Tracks {
   cd_number: Generated<number>;
   duration_ms: number | null;
@@ -189,6 +203,13 @@ export interface Tracks {
   title: string;
   track_number: number;
   updated_at: Generated<number>;
+}
+
+export interface TrackTextTags {
+  id: Generated<number>;
+  tag_id: number;
+  track_id: number;
+  value: string;
 }
 
 export interface DB {
@@ -216,5 +237,8 @@ export interface DB {
   releases: Releases;
   text_tags: TextTags;
   track_credits: TrackCredits;
+  track_date_tags: TrackDateTags;
+  track_real_number_tags: TrackRealNumberTags;
+  track_text_tags: TrackTextTags;
   tracks: Tracks;
 }

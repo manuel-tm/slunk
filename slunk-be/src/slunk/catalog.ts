@@ -13,6 +13,7 @@ import { formatDate, type ParsedDate, parseDate } from "./dates.ts"
 import type { Media } from "./media.ts"
 import type { FileRecord, LinkOwner } from "./media/repository.ts"
 import { type ListArgs, pagingOf, searchOf, sortOf } from "./paging.ts"
+import type { Tagging, TagValuesInput } from "./tagging.ts"
 import type { TagFilter } from "./tagging/repository.ts"
 
 export type Catalog = ReturnType<typeof createCatalog>
@@ -56,6 +57,8 @@ export type TrackInput = {
   featureIds: number[]
   credits: CreditInput[]
   files: FileLinkInput[]
+  /** Replaces the track's tags. Left out, they stay as they are. */
+  tags?: TagValuesInput[] | null
 }
 
 const LIST_NAMES: Record<ListKind, string> = {
@@ -71,9 +74,11 @@ const RENUMBER_OFFSET = 1_000_000
 export function createCatalog({
   store,
   media,
+  tagging,
 }: {
   store: CatalogStore
   media: Media
+  tagging: Tagging
 }) {
   /** Registered files for refs, registering paths first. Reads outside the transaction. */
   async function prepareRefs(refs: FileRef[]) {
@@ -319,25 +324,15 @@ export function createCatalog({
 
     // Releases
 
-    listReleases: (
-      args: ListArgs & {
-        format?: number | null
-        medium?: number | null
-        label?: number | null
-        artist?: number | null
-        tags?: TagFilter[]
-      }
-    ) =>
+    listReleases: (args: ListArgs & ReleaseFilterArgs) =>
       store.releases.list({
         ...pagingOf(args),
         ...sortOf(args.sort, ["title", "released"] as const, "Releases"),
-        search: searchOf(args.q),
-        format: args.format ?? undefined,
-        medium: args.medium ?? undefined,
-        label: args.label ?? undefined,
-        artist: args.artist ?? undefined,
-        tags: args.tags,
+        ...releaseFilters(args),
       }),
+    /** Every matching release's id, to select them all for a bulk edit. */
+    releaseIds: (args: ListArgs & ReleaseFilterArgs) =>
+      store.releases.ids(releaseFilters(args)),
     getRelease: (id: number) => store.releases.get(id),
     releasesByIds: (ids: readonly number[]) => store.releases.getMany(ids),
     releasesTitled: (title: string) => store.releases.findByTitle(title),
@@ -496,12 +491,15 @@ export function createCatalog({
 
     // Tracks
 
-    listTracks: (args: ListArgs & { release?: number | null }) =>
+    listTracks: (
+      args: ListArgs & { release?: number | null; tags?: TagFilter[] }
+    ) =>
       store.tracks.list({
         ...pagingOf(args),
         ...sortOf(args.sort, ["title"] as const, "Tracks"),
         search: searchOf(args.q),
         release: args.release ?? undefined,
+        tags: args.tags,
       }),
     getTrack: (id: number) => store.tracks.get(id),
     tracksByIds: (ids: readonly number[]) => store.tracks.getMany(ids),
@@ -529,6 +527,9 @@ export function createCatalog({
         )
         await tx.credits.set("track", track.id, uniqueCredits(input.credits))
         await setFileLinks(tx, "track", track.id, input.files, registered)
+        if (input.tags) {
+          await tagging.setTagsWith(tx, "track", track.id, input.tags)
+        }
         return track
       })
     },
@@ -559,11 +560,33 @@ export function createCatalog({
         )
         await tx.credits.set("track", id, uniqueCredits(input.credits))
         await setFileLinks(tx, "track", id, input.files, registered)
+        if (input.tags) await tagging.setTagsWith(tx, "track", id, input.tags)
         return track
       })
     },
 
     deleteTrack: (id: number) => store.tracks.delete(id),
+
+    // The library check's catalog part (design §8, phase 4)
+
+    releasesWithoutArtists: () => store.releases.withoutArtists(),
+    tracksWithoutPerformers: () => store.tracks.withoutPerformers(),
+
+    /**
+     * Reads the durations again of the tracks whose audio these files are,
+     * after the files changed on disk.
+     */
+    async readDurations(fileIds: number[]) {
+      const tracks = await store.tracks.ofFiles(fileIds)
+      for (const [fileId, track] of tracks) {
+        const file = await store.files.get(fileId)
+        if (!file) continue
+        const { durationMs } = await media.readAudio(file)
+        if (durationMs !== track.durationMs) {
+          await store.tracks.update(track.id, { durationMs })
+        }
+      }
+    },
 
     /** Who performs a track (design §4.3), as artist ids. */
     performers(
@@ -643,6 +666,26 @@ export function createCatalog({
       }
       return rows
     },
+  }
+}
+
+/** The release list's filters, as the API gives them. */
+type ReleaseFilterArgs = {
+  format?: number | null
+  medium?: number | null
+  label?: number | null
+  artist?: number | null
+  tags?: TagFilter[]
+}
+
+function releaseFilters(args: ListArgs & ReleaseFilterArgs) {
+  return {
+    search: searchOf(args.q),
+    format: args.format ?? undefined,
+    medium: args.medium ?? undefined,
+    label: args.label ?? undefined,
+    artist: args.artist ?? undefined,
+    tags: args.tags,
   }
 }
 

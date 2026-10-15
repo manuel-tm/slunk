@@ -10,12 +10,12 @@ import { DeleteButton } from "@/components/delete-button"
 import { artistUrl, labelUrl, Names } from "@/components/names"
 import { PageHeader } from "@/components/page-header"
 import { QueryError } from "@/components/query-error"
+import { TagValues } from "@/components/tag-values"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { graphql } from "@/gql"
 import type { ReleaseQuery } from "@/gql/graphql"
 import { formatDuration, formatReleased } from "@/lib/format"
-import { formatTagValue, tagValueUrl } from "@/lib/tags"
 import { NotFound } from "@/routes/not-found"
 
 const ReleaseQueryDocument = graphql(`
@@ -203,17 +203,7 @@ function Heading({ release }: { release: Release }) {
     ["Released", formatReleased(release.released)],
     ...release.tags.map(({ tag, values }): [string, ReactNode] => [
       tag.name,
-      values.map((value, index) => (
-        <span key={value}>
-          {index > 0 && ", "}
-          <Link
-            to={tagValueUrl(tag.type, tag.id, value)}
-            className="hover:underline"
-          >
-            {formatTagValue(tag.type, value)}
-          </Link>
-        </span>
-      )),
+      <TagValues type={tag.type} tagId={tag.id} values={values} />,
     ]),
   ]
 

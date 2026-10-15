@@ -7,6 +7,7 @@ import { DeleteButton } from "@/components/delete-button"
 import { artistUrl, Names } from "@/components/names"
 import { PageHeader } from "@/components/page-header"
 import { QueryError } from "@/components/query-error"
+import { TagValues } from "@/components/tag-values"
 import { Skeleton } from "@/components/ui/skeleton"
 import { graphql } from "@/gql"
 import { formatDuration } from "@/lib/format"
@@ -45,6 +46,14 @@ const TrackQuery = graphql(`
       file {
         id
         path
+      }
+      tags {
+        tag {
+          id
+          type
+          name
+        }
+        values
       }
       files {
         note
@@ -156,6 +165,19 @@ export function TrackRead() {
                   className="w-full max-w-md"
                 />
               </dd>
+              {track.tags.map(({ tag, values }) => (
+                <div key={`${tag.type}:${tag.id}`} className="contents">
+                  <dt className="text-muted-foreground">{tag.name}</dt>
+                  <dd>
+                    <TagValues
+                      type={tag.type}
+                      tagId={tag.id}
+                      values={values}
+                      list="/tracks"
+                    />
+                  </dd>
+                </div>
+              ))}
               {track.credits.length > 0 && (
                 <>
                   <dt className="text-muted-foreground">Credits</dt>

@@ -1,7 +1,7 @@
 // The migration runner (design §5.2). Kysely's own Migrator runs SQLite
 // migrations outside a transaction, so this one applies them all in a single
 // BEGIN IMMEDIATE … COMMIT and checks foreign keys before committing.
-import { existsSync, mkdirSync, readdirSync } from "node:fs"
+import { existsSync, mkdirSync, readdirSync, rmSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { pathToFileURL } from "node:url"
 import Database from "better-sqlite3"
@@ -16,6 +16,9 @@ export const MIGRATIONS_DIR = join(
 
 const MIGRATION_FILE = /^(\d{14}_[a-z0-9_]+)\.ts$/
 
+// The backups this runner makes, which are the only files it ever removes
+const BACKUP_FILE = /^slunk-(\d{14})(?:-(\d+))?\.db$/
+
 type MigrationsDB = {
   migrations: {
     id: Generated<number>
@@ -29,8 +32,18 @@ type Migration = {
   down(db: Kysely<unknown>): Promise<void>
 }
 
-/** What a run did: the migrations it ran, and the backup it made first. */
-export type Result = { names: string[]; backup: string | null }
+/**
+ * What a run did: the migrations it ran, the backup it made first, and the
+ * old backups that removed.
+ */
+export type Result = {
+  names: string[]
+  backup: string | null
+  removed: string[]
+}
+
+/** How many backups to keep (`SLUNK_KEEP_BACKUPS`). */
+export type BackupOptions = { keepBackups: number }
 
 /** `YYYYMMDDHHMMSS` in UTC, the timestamp in migration file names. */
 export function timestamp(date = new Date()): string {
@@ -50,18 +63,25 @@ export function migrationNames(): string[] {
 }
 
 /** Backs up, then applies every pending migration. */
-export function migrate(dbPath: string): Promise<Result> {
-  return run(dbPath, "up", (applied, files) =>
+export function migrate(
+  dbPath: string,
+  options: BackupOptions
+): Promise<Result> {
+  return run(dbPath, options, "up", (applied, files) =>
     files.filter((name) => !applied.includes(name))
   )
 }
 
 /** Backs up, then reverts the last `n` applied migrations, newest first. */
-export function rollback(dbPath: string, n = 1): Promise<Result> {
+export function rollback(
+  dbPath: string,
+  n: number,
+  options: BackupOptions
+): Promise<Result> {
   if (!Number.isInteger(n) || n < 1) {
     throw new Error(`Not a number of migrations: ${n}`)
   }
-  return run(dbPath, "down", (applied) => applied.slice(-n).reverse())
+  return run(dbPath, options, "down", (applied) => applied.slice(-n).reverse())
 }
 
 /** Every migration with when it was applied, plus applied ones whose file is gone. */
@@ -83,10 +103,13 @@ export async function status(
   }))
 }
 
-/** Copies the database into slunk-backups/, next to it. */
-export function backup(dbPath: string): Promise<string> {
+/** Copies the database into slunk-backups/, next to it, and removes old copies. */
+export function backup(
+  dbPath: string,
+  options: BackupOptions
+): Promise<{ backup: string; removed: string[] }> {
   return withDb(new Database(dbPath, { fileMustExist: true }), (db) =>
-    backupInto(db, dbPath)
+    backupInto(db, dbPath, options)
   )
 }
 
@@ -102,6 +125,7 @@ export async function latestMigration(db: Kysely<DB>): Promise<string | null> {
 
 async function run(
   dbPath: string,
+  options: BackupOptions,
   direction: "up" | "down",
   pick: (applied: string[], files: string[]) => string[]
 ): Promise<Result> {
@@ -111,9 +135,11 @@ async function run(
   return withDb(openSqlite(dbPath, { foreignKeys: false }), async (db) => {
     const files = migrationNames()
     if (pick(await applied(db, files), files).length === 0) {
-      return { names: [], backup: null }
+      return { names: [], backup: null, removed: [] }
     }
-    const backup = isNew ? null : await backupInto(db, dbPath)
+    const { backup, removed } = isNew
+      ? { backup: null, removed: [] }
+      : await backupInto(db, dbPath, options)
 
     const names = await db.connection().execute(async (conn) => {
       // Takes the write lock up front, so the server and the CLI can't
@@ -158,7 +184,7 @@ async function run(
         throw error
       }
     })
-    return { names, backup }
+    return { names, backup, removed }
   })
 }
 
@@ -199,8 +225,9 @@ async function appliedRows(db: Kysely<MigrationsDB>) {
 
 async function backupInto(
   db: Kysely<MigrationsDB>,
-  dbPath: string
-): Promise<string> {
+  dbPath: string,
+  { keepBackups }: BackupOptions
+): Promise<{ backup: string; removed: string[] }> {
   const dir = join(dirname(dbPath), "slunk-backups")
   mkdirSync(dir, { recursive: true })
   const stamp = timestamp()
@@ -209,7 +236,24 @@ async function backupInto(
     file = join(dir, `slunk-${stamp}-${n}.db`)
   }
   await sql`vacuum into ${file}`.execute(db)
-  return file
+  return { backup: file, removed: pruneBackups(dir, keepBackups) }
+}
+
+/**
+ * Removes all but the newest `keep` backups. Only files named like this
+ * runner's backups are touched; anything else in the folder stays.
+ */
+function pruneBackups(dir: string, keep: number): string[] {
+  const backups = readdirSync(dir)
+    .flatMap((name) => {
+      const match = BACKUP_FILE.exec(name)
+      return match ? [{ name, stamp: match[1], n: Number(match[2] ?? 1) }] : []
+    })
+    // Oldest first. `-2` comes after the plain name of the same second.
+    .sort((a, b) => a.stamp.localeCompare(b.stamp) || a.n - b.n)
+  const old = backups.slice(0, Math.max(0, backups.length - keep))
+  for (const { name } of old) rmSync(join(dir, name))
+  return old.map(({ name }) => join(dir, name))
 }
 
 async function withDb<T>(

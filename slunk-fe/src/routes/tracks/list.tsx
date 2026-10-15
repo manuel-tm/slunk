@@ -14,7 +14,14 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { graphql } from "@/gql"
+import { TagFilters } from "@/components/tag-filters"
 import { useListParams } from "@/hooks/use-list-params"
+import {
+  tagFilterInput,
+  tagFilterRefs,
+  tagFiltersOf,
+  tagNames,
+} from "@/lib/tags"
 import { formatDateTime, formatDuration } from "@/lib/format"
 
 const TracksQuery = graphql(`
@@ -26,6 +33,9 @@ const TracksQuery = graphql(`
     $release: ID
     $releaseId: ID!
     $withRelease: Boolean!
+    $tags: [TagFilterInput!]!
+    $tagRefs: [TagRefInput!]!
+    $withTags: Boolean!
   ) {
     tracks(
       page: $page
@@ -33,6 +43,7 @@ const TracksQuery = graphql(`
       sort: $sort
       q: $q
       release: $release
+      tags: $tags
     ) {
       total
       items {
@@ -61,13 +72,20 @@ const TracksQuery = graphql(`
       id
       name: title
     }
+    filterTags: tagsByRef(refs: $tagRefs) @include(if: $withTags) {
+      id
+      type
+      name
+    }
   }
 `)
 
-/** `/tracks` (design §7.8) */
+/** `/tracks` (design §7.8), with tag filters like the release list's. */
 export function TrackList() {
   const list = useListParams()
   const release = list.params.get("release")
+  const tagFilters = tagFiltersOf(list.params)
+  const tagRefs = tagFilterRefs(tagFilters)
   const { data, error } = useQuery(TracksQuery, {
     variables: {
       page: list.page,
@@ -77,6 +95,9 @@ export function TrackList() {
       release,
       releaseId: release ?? "",
       withRelease: release !== null,
+      tags: tagFilters.map(tagFilterInput),
+      tagRefs,
+      withTags: tagRefs.length > 0,
     },
   })
 
@@ -87,13 +108,23 @@ export function TrackList() {
       list={list}
       searchPlaceholder="Search titles"
       filters={
-        <div className="w-64">
-          <ReleasePicker
-            value={data?.filterRelease ?? null}
-            placeholder="Any release"
-            onChange={(option) => list.update({ release: option?.id ?? null })}
+        <>
+          <div className="w-64">
+            <ReleasePicker
+              value={data?.filterRelease ?? null}
+              placeholder="Any release"
+              onChange={(option) =>
+                list.update({ release: option?.id ?? null })
+              }
+            />
+          </div>
+          <TagFilters
+            filters={tagFilters}
+            names={tagNames(data?.filterTags)}
+            onAdd={list.append}
+            onRemove={(filter) => list.remove(filter.key, filter.value)}
           />
-        </div>
+        </>
       }
       total={data?.tracks.total}
       error={error}

@@ -40,7 +40,7 @@ const config: CodegenConfig = {
           TextTag: `${TAGS}#Tag`,
           NumberTag: `${TAGS}#Tag`,
           DateTag: `${TAGS}#Tag`,
-          ReleaseTag: "../../slunk/tagging.ts#ReleaseTag",
+          TagValues: "../../slunk/tagging.ts#OwnerTag",
         },
       },
     },

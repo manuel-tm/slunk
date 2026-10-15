@@ -2,6 +2,7 @@ import {
   type Insertable,
   type Kysely,
   type Selectable,
+  type SqlBool,
   type Updateable,
   sql,
 } from "kysely"
@@ -12,13 +13,17 @@ import type {
 } from "../slunk/catalog/repository.ts"
 import type { DB, Tracks } from "./db_types.ts"
 import { chunks, contains, groupBy } from "./helpers.ts"
+import { tagMatches } from "./tags_repository.ts"
 
 export function createTracksRepository(db: Kysely<DB>): TracksRepository {
   return {
-    async list({ offset, limit, sort, descending, search, release }) {
+    async list({ offset, limit, sort, descending, search, release, tags }) {
       let query = db.selectFrom("tracks")
       if (search) query = query.where(contains("title", search))
       if (release !== undefined) query = query.where("release_id", "=", release)
+      for (const filter of tags ?? []) {
+        query = query.where(tagMatches("track", filter))
+      }
       const { total } = await query
         .select((eb) => eb.fn.countAll<number>().as("total"))
         .executeTakeFirstOrThrow()
@@ -157,6 +162,26 @@ export function createTracksRepository(db: Kysely<DB>): TracksRepository {
           }))
         )
         .execute()
+    },
+
+    async withoutPerformers() {
+      const rows = await db
+        .selectFrom("tracks")
+        .innerJoin("releases", "releases.id", "tracks.release_id")
+        .selectAll("tracks")
+        .where("releases.various_artists", "=", 1)
+        .where(
+          sql<SqlBool>`not exists (
+            select 1 from artists_tracks
+            where track_id = tracks.id and featured = 0
+          )`
+        )
+        .orderBy(sql`releases.title collate nocase`)
+        .orderBy("tracks.release_id")
+        .orderBy("tracks.cd_number")
+        .orderBy("tracks.track_number")
+        .execute()
+      return rows.map(toTrack)
     },
   }
 }

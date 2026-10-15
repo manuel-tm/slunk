@@ -38,6 +38,7 @@ const TagQueryDocument = graphql(`
       name
       multiple
       releaseCount
+      trackCount
       blockers
       ... on TextTag {
         values(page: $page, perPage: $perPage, q: $q) {
@@ -45,6 +46,7 @@ const TagQueryDocument = graphql(`
           items {
             value
             releases
+            tracks
           }
         }
       }
@@ -66,8 +68,8 @@ export function TagRead() {
 }
 
 /**
- * A tag definition and how many releases have it (design §7.8). A text tag
- * also lists its values, each linking to the releases that have it.
+ * A tag definition and how many releases and tracks have it (design §7.8). A
+ * text tag also lists its values, with links to what has each.
  */
 function Tag({ type, id }: { type: TagType; id: string }) {
   const list = useListParams()
@@ -119,11 +121,13 @@ function Tag({ type, id }: { type: TagType; id: string }) {
                 <dt className="text-muted-foreground">Values:</dt>
                 <dd>
                   {tag.multiple
-                    ? "Multiple, several per release"
-                    : "Single, one per release"}
+                    ? "Multiple, several per release or track"
+                    : "Single, one per release or track"}
                 </dd>
                 <dt className="text-muted-foreground">Releases:</dt>
                 <dd className="tabular-nums">{tag.releaseCount}</dd>
+                <dt className="text-muted-foreground">Tracks:</dt>
+                <dd className="tabular-nums">{tag.trackCount}</dd>
               </dl>
             </div>
             {tag.__typename === "TextTag" && (
@@ -146,7 +150,9 @@ function Tag({ type, id }: { type: TagType; id: string }) {
                 </div>
                 {tag.values.total === 0 ? (
                   <p className="text-muted-foreground">
-                    {list.q ? "Nothing matches." : "No release has it yet."}
+                    {list.q
+                      ? "Nothing matches."
+                      : "No release or track has it yet."}
                   </p>
                 ) : (
                   <Table>
@@ -156,21 +162,31 @@ function Tag({ type, id }: { type: TagType; id: string }) {
                         <TableHead className="w-24 text-right">
                           Releases
                         </TableHead>
+                        <TableHead className="w-24 text-right">
+                          Tracks
+                        </TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {tag.values.items.map(({ value, releases }) => (
+                      {tag.values.items.map(({ value, releases, tracks }) => (
                         <TableRow key={value}>
-                          <TableCell>
-                            <Link
+                          <TableCell>{value}</TableCell>
+                          <TableCell className="text-right tabular-nums">
+                            <CountLink
+                              count={releases}
                               to={tagValueUrl(tag.type, tag.id, value)}
-                              className="hover:underline"
-                            >
-                              {value}
-                            </Link>
+                            />
                           </TableCell>
                           <TableCell className="text-right tabular-nums">
-                            {releases}
+                            <CountLink
+                              count={tracks}
+                              to={tagValueUrl(
+                                tag.type,
+                                tag.id,
+                                value,
+                                "/tracks"
+                              )}
+                            />
                           </TableCell>
                         </TableRow>
                       ))}
@@ -183,5 +199,15 @@ function Tag({ type, id }: { type: TagType; id: string }) {
         )}
       </div>
     </>
+  )
+}
+
+/** A count that links to what it counts, unless there's nothing. */
+function CountLink({ count, to }: { count: number; to: string }) {
+  if (count === 0) return <span className="text-muted-foreground">0</span>
+  return (
+    <Link to={to} className="hover:underline">
+      {count}
+    </Link>
   )
 }

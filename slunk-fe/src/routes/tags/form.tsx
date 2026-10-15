@@ -34,6 +34,13 @@ const TagFormQueryDocument = graphql(`
           title
         }
       }
+      multiValueTracks(perPage: 20) {
+        total
+        items {
+          id
+          title
+        }
+      }
     }
   }
 `)
@@ -107,8 +114,24 @@ function Form({ tag }: { tag?: Tag }) {
   const [update, updated] = useMutation(UpdateTag)
   const error = created.error ?? updated.error
   // Switching to single fails while these have several values (design §4.4)
-  const blocking =
-    tag?.multiple && !values.multiple ? tag.multiValueReleases : null
+  const switching = tag?.multiple && !values.multiple
+  const blocking = !switching
+    ? []
+    : [
+        ...tag.multiValueReleases.items.map((r) => ({
+          key: `release:${r.id}`,
+          title: r.title,
+          to: `/releases/${r.id}/update/tags`,
+        })),
+        ...tag.multiValueTracks.items.map((t) => ({
+          key: `track:${t.id}`,
+          title: `${t.title} (track)`,
+          to: `/tracks/${t.id}/update`,
+        })),
+      ]
+  const blockingTotal = switching
+    ? tag.multiValueReleases.total + tag.multiValueTracks.total
+    : 0
 
   return (
     <form
@@ -137,30 +160,27 @@ function Form({ tag }: { tag?: Tag }) {
           typeFixed={tag !== undefined}
           onChange={(changes) => setValues((v) => ({ ...v, ...changes }))}
         />
-        {blocking && blocking.total > 0 && (
+        {blockingTotal > 0 && (
           <Alert>
             <CircleAlertIcon />
             <AlertTitle>
-              {blocking.total === 1
-                ? "A release has several values"
-                : `${blocking.total} releases have several values`}
+              {blockingTotal === 1
+                ? "One has several values"
+                : `${blockingTotal} have several values`}
             </AlertTitle>
             <AlertDescription>
               <p>Leave one value on each before making the tag single-value:</p>
               <ul className="list-disc pl-4">
-                {blocking.items.map((release) => (
-                  <li key={release.id}>
-                    <Link
-                      to={`/releases/${release.id}/update/tags`}
-                      className="underline"
-                    >
-                      {release.title}
+                {blocking.map((item) => (
+                  <li key={item.key}>
+                    <Link to={item.to} className="underline">
+                      {item.title}
                     </Link>
                   </li>
                 ))}
               </ul>
-              {blocking.total > blocking.items.length && (
-                <p>And {blocking.total - blocking.items.length} more.</p>
+              {blockingTotal > blocking.length && (
+                <p>And {blockingTotal - blocking.length} more.</p>
               )}
             </AlertDescription>
           </Alert>

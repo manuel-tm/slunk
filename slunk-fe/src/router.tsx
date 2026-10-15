@@ -30,6 +30,7 @@ import { LISTS } from "@/routes/lists/config"
 import { ListItemForm } from "@/routes/lists/form"
 import { ListItemList } from "@/routes/lists/list"
 import { ListItemRead } from "@/routes/lists/read"
+import { LibraryCheck } from "@/routes/library-check"
 import { NotFound } from "@/routes/not-found"
 import { ReleaseCreate, ReleaseEdit } from "@/routes/releases/edit"
 import { ReleaseFiles } from "@/routes/releases/files"
@@ -134,6 +135,7 @@ export const router = createBrowserRouter([
           { path: ":id/tags", element: <ImportTags /> },
         ],
       },
+      { path: "library-check", element: <LibraryCheck /> },
       { path: "*", element: <NotFound /> },
     ],
   },

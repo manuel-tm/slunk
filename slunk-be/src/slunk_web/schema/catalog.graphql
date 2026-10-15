@@ -20,9 +20,27 @@ extend type Query {
     tags: [TagFilterInput!]! = []
   ): ReleasePage!
   release(id: ID!): Release
+  "Every release matching the same search and filters as `releases`, newest first: selecting them all for a bulk edit."
+  releaseIds(
+    q: String
+    format: ID
+    medium: ID
+    label: ID
+    artist: ID
+    tags: [TagFilterInput!]! = []
+  ): [ID!]!
   "Releases with this title, ignoring case: an import checks it so a release isn't imported twice."
   releasesTitled(title: String!): [Release!]!
-  tracks(page: Int! = 1, perPage: Int! = 50, "`title`, or `id`, with `-` for descending" sort: String, q: String, release: ID): TrackPage!
+  tracks(
+    page: Int! = 1
+    perPage: Int! = 50
+    "`title`, or `id`, with `-` for descending"
+    sort: String
+    q: String
+    release: ID
+    "Every filter has to match."
+    tags: [TagFilterInput!]! = []
+  ): TrackPage!
   track(id: ID!): Track
   "Release formats, release media or credit roles."
   listItems(kind: ListKind!, page: Int! = 1, perPage: Int! = 50, "`name`, or `id`, with `-` for descending" sort: String, q: String): ListItemPage!
@@ -365,4 +383,6 @@ input TrackInput {
   featureIds: [ID!]! = []
   credits: [CreditInput!]! = []
   files: [FileLinkInput!]! = []
+  "Replaces the track's tags. Left out, they stay as they are."
+  tags: [TagValuesInput!]
 }

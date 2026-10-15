@@ -2,13 +2,15 @@
 
 > Keep this page up to date: any change to the frontend's stack, structure or conventions updates it in the same change.
 
-The frontend has phases 0 to 3:
+The frontend has phases 0 to 4:
 - the app shell (sidebar with the Import button, page header) and a "not found" page;
 - the dashboard: the backend's status, the catalog's totals, and the newest releases;
 - the files pages: list, register, read and update;
 - the catalog's pages: releases (with the release page and its edit tabs), artists (with their tabs), tracks, labels, release formats, release media and credit roles;
-- tags: their definitions' pages, a release's Tags tab, its tags on the release page, and tag filters on the release list;
-- the import: a release built from a folder, step by step.
+- tags: their definitions' pages, a release's Tags tab, its tags on the release page, a track's tags, and tag filters on the release and track lists;
+- bulk edits on the release list: setting or removing a tag on many releases;
+- the import: a release built from a folder, step by step;
+- the library check: files missing, moved or changed on disk, unregistered files, and gaps in the catalog.
 
 ## Stack
 
@@ -41,11 +43,12 @@ slunk-fe/
     index.css              Tailwind setup, theme tokens (light and dark), fonts
     routes/                one component per page (design §7.4)
       dashboard.tsx        /
+      library-check.tsx    /library-check
       not-found.tsx        any unknown route or id
       files/               /files: list, create (register), read, update
       releases/
         list.tsx           /releases
-        tag-filters.tsx    the release list's tag filters
+        bulk-edit.tsx      the release list's bulk edits
         page.tsx           /releases/:id, the release page
         files.tsx          /releases/:id/files
         edit.tsx           /releases/create, and the edit tabs' frame
@@ -75,8 +78,12 @@ slunk-fe/
       chip-list.tsx        a compact picked list, for table rows
       credits-editor.tsx   credits as rows of role and artist
       file-links-editor.tsx  file links, each with a note
+      file-uses.tsx        what uses a file, each linking to it
       tag-fields.tsx       a tag definition's fields, and the new-tag dialog
       tag-value-input.tsx  a tag value, suggesting a text tag's values
+      tags-editor.tsx      a release's or track's tags, as rows to edit
+      tag-values.tsx       a tag's values, each linking to the filtered list
+      tag-filters.tsx      a list's tag filters: chips, and "Tag filter"
       release-table.tsx    the release table, with a column set per page
       names.tsx            names that link to their pages: "A, B & C"
       credit-lines.tsx     credits as "Producer – A, B", a line per role
@@ -136,7 +143,7 @@ Lists follow design §7.2:
   - `SortableHead`: a header that cycles ascending (`?sort=path`), descending (`?sort=-path`), then the default.
 - **Size:** lists ask for 50 rows a page.
 - **Frame:** `ListLayout` is a list page's frame: the header and its New button, the search box, filters, the pager, then the table, or what's there while it loads, fails or is empty.
-- **The release table** (`ReleaseTable`) is shared by the release list and the label and artist pages, each with its own columns (design §7.6).
+- **The release table** (`ReleaseTable`) is shared by the release list and the label and artist pages, each with its own columns (design §7.6). With `selection`, each row gets a checkbox, and the header's selects the page.
 - **The tags list** (`/tags`) is the exception to the frame: it shows a table per type (design §7.8), each with every tag of that type, up to 200, and a note to search when there are more. The search box and the name sort apply to all three.
 
 ### Forms
@@ -173,9 +180,11 @@ Files are registered only when a step saves them, together with what uses them.
 ### Tags
 
 - **Routes** include the type, `/tags/:type/:id`, where the type is `text`, `number` or `date`. An unknown type shows `NotFound`.
-- **The release page** shows a row per tag after Released, as "Genre: Pop, Rock". Each value links to the release list filtered by it. Date values show as dates ("Mar 1, 2024").
-- **The Tags tab** (`forms/tags.tsx`) lists the release's tags. A single-value tag is one input, and a multi-value tag is a `ChipList`. "Add a tag" picks one, or creates it. Saving sends every tag, and an emptied one is removed.
-- **Release list filters** are query string parameters, one per filter, which all have to match (`lib/tags.ts`):
+- **The release page** shows a row per tag after Released, as "Genre: Pop, Rock". Each value links to the release list filtered by it (`TagValues`). Date values show as dates ("Mar 1, 2024").
+- **The Tags tab** (`forms/tags.tsx`) edits the release's tags with `TagsEditor`. A single-value tag is one input, and a multi-value tag is a `ChipList`. "Add a tag" picks one, or creates it. Saving sends every tag, and an emptied one is removed.
+- **Tracks** have tags too. The track form has a Tags section, the same `TagsEditor`, saved with the rest of the track. The track page shows them, each value linking to the track list filtered by it.
+- **The tag pages** count releases and tracks. A text tag's values table has both counts, each linking to its filtered list.
+- **List filters,** on `/releases` and `/tracks`, are query string parameters, one per filter, which all have to match (`lib/tags.ts`):
 
   | Parameter | Matches |
   |---|---|
@@ -186,7 +195,23 @@ Files are registered only when a step saves them, together with what uses them.
   | `date.2=2024` | Date tag 2 is in 2024: a date can be a year, a month or a day |
   | `date.2.min=2024-03`, `date.2.max=2024` | Date tag 2 is on or after March 1, 2024, on or before Dec 31, 2024 |
 
-  "Genre is Rock and Score ≥ 8" is `?text.3=Rock&number.5.min=8`. Each filter is a chip ("Score ≥ 8") that removes it, and "Tag filter" adds one: "is" or "contains" for text, a range for numbers and dates. The list names the chips with `tagsByRef`, in its one query.
+  "Genre is Rock and Score ≥ 8" is `?text.3=Rock&number.5.min=8`. Each filter is a chip ("Score ≥ 8") that removes it, and "Tag filter" adds one: "is" or "contains" for text, a range for numbers and dates (`TagFilters`). The list names the chips with `tagsByRef`, in its one query.
+
+### Bulk edits
+
+The release list's rows have checkboxes (`bulk-edit.tsx`). The selection is kept by id, across pages, until it's cleared.
+- **Selecting:** a row's checkbox, or the header's for the page. "Select all N that match" asks `releaseIds` for every release the filters match.
+- **Set a tag:** a tag and a value. A single-value tag gets the value instead of its old one, and a multi-value tag gets it added. The tag picker can create a tag.
+- **Remove a tag:** a tag, and a value to remove only that one.
+- After each, a toast says how many releases changed, and the list is fetched again (`refetchQueries`). The selection stays, for another edit.
+
+### Library check
+
+`/library-check` runs the check when it opens, and again after "Check again" or a fix. It's `network-only`, since a cached result would be out of date. Each kind of problem is a section with its count, and "None." when there's nothing:
+- **Missing files:** what uses each one (`FileUses`), and where it may have moved. "Relink" points the record at a path, and "Relink all N found" does it for every file whose likely new path is clear. A file found nowhere links to its edit page.
+- **Changed files:** the size change and modification time. "Rehash" reads one again, and "Rehash all" all of them.
+- **Unregistered files,** by folder, with "Register…", which opens `/files/create?folder=…`.
+- **Releases with no artist** and **tracks nobody performs,** each linking to the edit tab that fixes it.
 
 ### Components
 
