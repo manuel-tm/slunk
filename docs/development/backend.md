@@ -165,6 +165,7 @@ The path is under `/raw` so it can't collide with the frontend's `/files` pages 
   - tracks left out are deleted, but their files stay registered.
 
   Before saving, the release's track numbers are shifted out of the way, so swapping two numbers can't trip the unique (release, disc, number) index.
+- **Covers, pictures and logos** can be set on their own (`setReleaseCover`, `setArtistPicture`, `setLabelPicture`), from a file id or a path. A path that isn't registered yet is registered in the same transaction, so a file the database refuses (one that isn't an image) isn't left registered. The other fields, and a release's file links, stay as they are.
 - **Durations** are read from the audio file when a track is created, or when its file changes.
 - **Track artists** are the track's own performers. Features are kept apart, and an artist can't be both on one track.
 - **Who performs a track** follows design §4.3:
@@ -343,6 +344,7 @@ Using it:
   - `artists`, `artist`, `labels`, `label`, `releases`, `release`, `tracks`, `track`, `listItems`, `listItem`: the catalog. `releases` filters by `format`, `medium`, `label`, `artist` and `tags`, `tracks` by `release` and `tags`. `releasesTitled` finds releases with a title, and `releaseIds` every release a filter matches.
   - `createArtist`, `updateArtist`, `deleteArtist`, and the same for labels, releases, tracks and list items.
   - `setReleaseTracks`, `setReleaseFiles`, `setReleaseCredits`: a release's edit tabs. Files can be given by path, and they're registered first.
+  - `setReleaseCover`, `setArtistPicture`, `setLabelPicture`: only the image, from a file id or a path to register first. The pages set an empty one with them.
   - `catalogTotals`: the dashboard's numbers.
   - `releaseSuggestion`, `trackSuggestions`: the import's prefill.
   - `tags`, `tag`: tag definitions, of one type or all three. A `TextTag` has its `values`, counted. `tagsByRef` gets tags by type and id, for naming a list's filters.

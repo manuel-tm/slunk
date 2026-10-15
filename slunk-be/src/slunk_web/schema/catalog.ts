@@ -131,6 +131,8 @@ export const catalogResolvers: Resolvers = {
         pictureId: optional(input.pictureId),
         files: fileLinks(input.files),
       }),
+    setArtistPicture: (_parent, { id, picture }, { catalog }) =>
+      catalog.setArtistPicture(n(id), fileRef(picture)),
     deleteArtist: async (_parent, { id }, { catalog }) => {
       await catalog.deleteArtist(n(id))
       return id
@@ -145,6 +147,8 @@ export const catalogResolvers: Resolvers = {
         name: input.name,
         pictureId: optional(input.pictureId),
       }),
+    setLabelPicture: (_parent, { id, picture }, { catalog }) =>
+      catalog.setLabelPicture(n(id), fileRef(picture)),
     deleteLabel: async (_parent, { id }, { catalog }) => {
       await catalog.deleteLabel(n(id))
       return id
@@ -175,6 +179,8 @@ export const catalogResolvers: Resolvers = {
         cover: input.cover ? fileRef(input.cover) : null,
         files: fileLinks(input.files),
       }),
+    setReleaseCover: (_parent, { id, cover }, { catalog }) =>
+      catalog.setReleaseCover(n(id), fileRef(cover)),
     setReleaseCredits: (_parent, { id, input }, { catalog }) =>
       catalog.setReleaseCredits(n(id), {
         credits: credits(input.credits),

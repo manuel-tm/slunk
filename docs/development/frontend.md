@@ -88,8 +88,11 @@ slunk-fe/
       names.tsx            names that link to their pages: "A, B & C"
       credit-lines.tsx     credits as "Producer – A, B", a line per role
       cover.tsx            a cover or picture, or a placeholder
+      cover-chooser.tsx    an empty cover, picture or logo that opens a
+                           dialog to choose one from the disk
       file-gallery.tsx     a primary image, then linked files
-      folder-browser.tsx   browses the disk from the database's folder
+      folder-browser.tsx   browses the disk from the database's folder, by
+                           links or in place, and can pick a file
       file-type.tsx        a file type's label and icon
       theme-provider.tsx   light / dark / system theme
       ui/                  shadcn components (see "Installed components" below)
@@ -158,6 +161,15 @@ Lists follow design §7.2:
 - **Ordered lists** (release artists, labels, formats, media, a track's artists and features) use `OrderedList`, whose order sets `position`. A track row uses the compact `ChipList`. Credits use `CreditsEditor`, and file links `FileLinksEditor`.
 - **The release forms** in `routes/releases/forms/` each take a release id and an `onSaved`, so the edit tabs and the import's steps use the same ones (design §7.6).
 - **A dialog with its own form,** like `NewTagDialog`, calls `stopPropagation()` on submit. The dialog is portaled out of the page's form in the DOM, but React still bubbles the submit event to it, which would save the page's form too.
+
+### Choosing an image
+
+On the release, artist and label pages, an empty cover, picture or logo is a button (`CoverChooser`). It opens `ChooseImageDialog`, so the image is set without leaving the page:
+- **Browsing** is the `FolderBrowser`, in place: with `onOpen` instead of `linkTo`, a folder opens inside the dialog instead of changing the URL. Images can be picked, and other files are faded.
+- **Picking** an image saves it at once, with `setReleaseCover`, `setArtistPicture` or `setLabelPicture`. An image that isn't registered yet is sent by path, and the backend registers it in the same transaction. A failure stays in the dialog, with the backend's reason.
+- **Where it starts:** a release's cover starts in the folder holding all its tracks (`CD1/` and `CD2/` start in the folder above them). Otherwise the dialog starts in the folder of the last image chosen, which the browser remembers (`slunk.imageFolder` in `localStorage`), or else the database's folder. A folder that can't be opened offers to go back to the database's folder.
+
+Once an image is set, it's changed in the edit forms, as before.
 
 ### Deleting
 

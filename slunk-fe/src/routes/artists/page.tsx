@@ -5,6 +5,7 @@ import { Link, useParams } from "react-router"
 import { Button } from "@/components/ui/button"
 import { ButtonLink } from "@/components/button-link"
 import { Cover } from "@/components/cover"
+import { CoverChooser } from "@/components/cover-chooser"
 import { DeleteButton } from "@/components/delete-button"
 import { FileGallery } from "@/components/file-gallery"
 import { PER_PAGE } from "@/components/list/list-layout"
@@ -47,6 +48,18 @@ graphql(`
   }
 `)
 
+const SetArtistPicture = graphql(`
+  mutation SetArtistPicture($id: ID!, $picture: FileRefInput!) {
+    setArtistPicture(id: $id, picture: $picture) {
+      ...ArtistHeader
+      picture {
+        id
+        name
+      }
+    }
+  }
+`)
+
 const DeleteArtist = graphql(`
   mutation DeleteArtist($id: ID!) {
     deleteArtist(id: $id)
@@ -71,6 +84,7 @@ function ArtistFrame({
   children: ReactNode
 }) {
   const [deleteArtist] = useMutation(DeleteArtist, { variables: { id } })
+  const [setPicture] = useMutation(SetArtistPicture)
   if (loaded && !artist) return <NotFound />
   const base = `/artists/${id}`
 
@@ -126,10 +140,14 @@ function ArtistFrame({
         ) : (
           <>
             <div className="flex items-center gap-4">
-              <Cover
+              <CoverChooser
                 file={artist.picture}
                 alt={artist.name}
                 className="size-24"
+                noun="picture"
+                onChoose={(picture) =>
+                  setPicture({ variables: { id, picture } })
+                }
               />
               <h1 className="font-heading text-2xl font-semibold">
                 {artist.name}

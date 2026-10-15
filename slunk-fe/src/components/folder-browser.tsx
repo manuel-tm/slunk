@@ -16,7 +16,9 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { graphql } from "@/gql"
+import type { FolderQuery } from "@/gql/graphql"
 import { formatSize } from "@/lib/format"
+import { cn } from "@/lib/utils"
 
 const FolderQuery = graphql(`
   query Folder($path: String!) {
@@ -42,6 +44,16 @@ const FolderQuery = graphql(`
   }
 `)
 
+export type FolderEntryFile = FolderQuery["folder"]["files"][number]
+
+/**
+ * How the browser opens a folder: a link, when the folder is in the URL, or
+ * in place, as in a dialog.
+ */
+type Navigation =
+  | { linkTo: (path: string) => string; onOpen?: never }
+  | { onOpen: (path: string) => void; linkTo?: never }
+
 /**
  * Browses the disk from the folder that holds slunk.db: a folder's
  * subfolders, `..` to go up, and the files directly inside. Folders that
@@ -49,19 +61,34 @@ const FolderQuery = graphql(`
  */
 export function FolderBrowser({
   path,
-  linkTo,
   actions,
-}: {
+  pickable,
+  onPick,
+  ...navigation
+}: Navigation & {
   /** The folder, relative to the database's folder */
   path: string
-  /** Where a folder's link goes */
-  linkTo: (path: string) => string
   /** Buttons for the folder, like "Choose this folder" */
   actions?: ReactNode
+  /** Which files can be picked, with `onPick` */
+  pickable?: (file: FolderEntryFile) => boolean
+  /** Picks a file, which only files `pickable` accepts offer */
+  onPick?: (file: FolderEntryFile) => void
 }) {
   const { data, error } = useQuery(FolderQuery, { variables: { path } })
 
-  if (error) return <QueryError error={error} title="Can't open the folder" />
+  if (error) {
+    return (
+      <div className="flex flex-col items-start gap-2">
+        <QueryError error={error} title="Can't open the folder" />
+        {path !== "" && (
+          <OpenFolder path="" navigation={navigation}>
+            Open the database's folder
+          </OpenFolder>
+        )}
+      </div>
+    )
+  }
   if (!data) return <Skeleton className="h-48 w-full" />
   const { folder } = data
 
@@ -84,26 +111,20 @@ export function FolderBrowser({
           {folder.parent !== null && (
             <TableRow>
               <TableCell colSpan={4}>
-                <Link
-                  to={linkTo(folder.parent)}
-                  className="flex items-center gap-2 hover:underline [&_svg]:size-4"
-                >
+                <OpenFolder path={folder.parent} navigation={navigation}>
                   <FolderUpIcon />
                   ..
-                </Link>
+                </OpenFolder>
               </TableCell>
             </TableRow>
           )}
           {folder.folders.map((sub) => (
             <TableRow key={sub.path}>
               <TableCell colSpan={3}>
-                <Link
-                  to={linkTo(sub.path)}
-                  className="flex items-center gap-2 hover:underline [&_svg]:size-4"
-                >
+                <OpenFolder path={sub.path} navigation={navigation}>
                   <FolderIcon />
                   {sub.name}
-                </Link>
+                </OpenFolder>
               </TableCell>
               <TableCell className="text-right">
                 {sub.hasRegisteredFiles && (
@@ -115,10 +136,27 @@ export function FolderBrowser({
           {folder.files.map((file) => (
             <TableRow key={file.path}>
               <TableCell>
-                <span className="flex items-center gap-2 text-muted-foreground [&_svg]:size-4">
-                  <FileTypeIcon type={file.type} />
-                  <span className="text-foreground">{file.name}</span>
-                </span>
+                {onPick && pickable?.(file) ? (
+                  <button
+                    type="button"
+                    className={cn(ENTRY, "text-left")}
+                    onClick={() => onPick(file)}
+                  >
+                    <FileTypeIcon type={file.type} />
+                    {file.name}
+                  </button>
+                ) : (
+                  <span
+                    className={cn(
+                      "flex items-center gap-2 text-muted-foreground [&_svg]:size-4",
+                      // Files that can't be picked fade
+                      onPick && "opacity-60"
+                    )}
+                  >
+                    <FileTypeIcon type={file.type} />
+                    <span className="text-foreground">{file.name}</span>
+                  </span>
+                )}
               </TableCell>
               <TableCell>{FILE_TYPE_LABELS[file.type]}</TableCell>
               <TableCell className="text-right tabular-nums">
@@ -128,7 +166,12 @@ export function FolderBrowser({
                 {file.file && (
                   <Badge
                     variant="secondary"
-                    render={<Link to={`/files/${file.file.id}`} />}
+                    // In place, a link would leave the dialog
+                    render={
+                      navigation.linkTo ? (
+                        <Link to={`/files/${file.file.id}`} />
+                      ) : undefined
+                    }
                   >
                     Registered
                   </Badge>
@@ -146,5 +189,35 @@ export function FolderBrowser({
         </TableBody>
       </Table>
     </div>
+  )
+}
+
+const ENTRY = "flex items-center gap-2 hover:underline [&_svg]:size-4"
+
+/** A folder's link, or a button that opens it in place. */
+function OpenFolder({
+  path,
+  navigation,
+  children,
+}: {
+  path: string
+  navigation: Navigation
+  children: ReactNode
+}) {
+  if (navigation.linkTo) {
+    return (
+      <Link to={navigation.linkTo(path)} className={ENTRY}>
+        {children}
+      </Link>
+    )
+  }
+  return (
+    <button
+      type="button"
+      className={cn(ENTRY, "text-left")}
+      onClick={() => navigation.onOpen(path)}
+    >
+      {children}
+    </button>
   )
 }

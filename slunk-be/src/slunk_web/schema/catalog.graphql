@@ -55,10 +55,14 @@ extend type Query {
 extend type Mutation {
   createArtist(input: ArtistInput!): Artist!
   updateArtist(id: ID!, input: ArtistInput!): Artist!
+  "Sets only the picture. A file given by path is registered first, in the same transaction."
+  setArtistPicture(id: ID!, picture: FileRefInput!): Artist!
   "Fails while the artist is a release or track artist, or credited."
   deleteArtist(id: ID!): ID!
   createLabel(input: LabelInput!): Label!
   updateLabel(id: ID!, input: LabelInput!): Label!
+  "Sets only the logo. A file given by path is registered first, in the same transaction."
+  setLabelPicture(id: ID!, picture: FileRefInput!): Label!
   "Fails while the label is on a release."
   deleteLabel(id: ID!): ID!
   createRelease(input: ReleaseInput!): Release!
@@ -70,6 +74,8 @@ extend type Mutation {
   setReleaseTracks(id: ID!, tracks: [ReleaseTrackInput!]!): Release!
   "Sets the cover and replaces the file links. Files given by path are registered first."
   setReleaseFiles(id: ID!, input: ReleaseFilesInput!): Release!
+  "Sets only the cover, keeping the file links. A file given by path is registered first, in the same transaction."
+  setReleaseCover(id: ID!, cover: FileRefInput!): Release!
   "Replaces the release's credits and its tracks' credits."
   setReleaseCredits(id: ID!, input: ReleaseCreditsInput!): Release!
   "Creates a track from a registered audio file, reading its duration."

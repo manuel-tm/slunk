@@ -4,7 +4,7 @@ import { type ReactNode, useRef, useState } from "react"
 import { Link, useParams } from "react-router"
 
 import { ButtonLink } from "@/components/button-link"
-import { Cover } from "@/components/cover"
+import { commonFolder, CoverChooser } from "@/components/cover-chooser"
 import { CreditLines } from "@/components/credit-lines"
 import { DeleteButton } from "@/components/delete-button"
 import { artistUrl, labelUrl, Names } from "@/components/names"
@@ -74,6 +74,7 @@ const ReleaseQueryDocument = graphql(`
         trackNumber
         file {
           id
+          path
         }
         artists {
           id
@@ -93,6 +94,18 @@ const ReleaseQueryDocument = graphql(`
             name
           }
         }
+      }
+    }
+  }
+`)
+
+const SetReleaseCover = graphql(`
+  mutation SetReleaseCover($id: ID!, $cover: FileRefInput!) {
+    setReleaseCover(id: $id, cover: $cover) {
+      id
+      fileCount
+      cover {
+        id
       }
     }
   }
@@ -174,6 +187,7 @@ export function ReleasePage() {
 }
 
 function Heading({ release }: { release: Release }) {
+  const [setCover] = useMutation(SetReleaseCover)
   const filterLinks = (items: { id: string; name: string }[], filter: string) =>
     items.map((item, index) => (
       <span key={item.id}>
@@ -210,10 +224,16 @@ function Heading({ release }: { release: Release }) {
   return (
     <div className="flex flex-wrap gap-6">
       <div className="flex w-48 flex-col gap-1">
-        <Cover
+        <CoverChooser
           file={release.cover}
           alt={`${release.title} cover`}
           className="w-48"
+          noun="cover"
+          // A cover usually sits with the tracks
+          folder={commonFolder(release.tracks.map((track) => track.file.path))}
+          onChoose={(cover) =>
+            setCover({ variables: { id: release.id, cover } })
+          }
         />
         <Link to={`/releases/${release.id}/files`} className="hover:underline">
           Files ({release.fileCount})

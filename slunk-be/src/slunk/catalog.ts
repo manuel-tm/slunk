@@ -114,6 +114,25 @@ export function createCatalog({
     )
   }
 
+  /**
+   * Sets a cover, picture or logo from a ref, registering a path in the same
+   * transaction: a file that can't be used isn't left registered.
+   */
+  async function setImage<T>(
+    what: string,
+    id: number,
+    ref: FileRef,
+    update: (tx: CatalogStore, fileId: number) => Promise<T | null>
+  ): Promise<T> {
+    const prepared = await prepareRefs([ref])
+    return store.transaction(async (tx) => {
+      const registered = await media.insertPrepared(tx, prepared)
+      const updated = await update(tx, refId(ref, registered))
+      if (!updated) throw notFound(what, id)
+      return updated
+    })
+  }
+
   function trackArtists(
     artistIds: number[],
     featureIds: number[]
@@ -258,6 +277,12 @@ export function createCatalog({
       })
     },
 
+    /** Sets only an artist's picture, registering a path. */
+    setArtistPicture: (id: number, picture: FileRef) =>
+      setImage("artist", id, picture, (tx, fileId) =>
+        tx.artists.update(id, { picture: fileId })
+      ),
+
     artistBlockers,
 
     async deleteArtist(id: number) {
@@ -311,6 +336,11 @@ export function createCatalog({
       if (!label) throw notFound("label", id)
       return label
     },
+    /** Sets only a label's logo, registering a path. */
+    setLabelPicture: (id: number, picture: FileRef) =>
+      setImage("label", id, picture, (tx, fileId) =>
+        tx.labels.update(id, { picture: fileId })
+      ),
     async labelBlockers(id: number) {
       const releases = await store.labels.releaseCount(id)
       return releases ? [`On ${count(releases, "release")}`] : []
@@ -488,6 +518,12 @@ export function createCatalog({
         return release
       })
     },
+
+    /** Sets only a release's cover, keeping its file links, registering a path. */
+    setReleaseCover: (id: number, cover: FileRef) =>
+      setImage("release", id, cover, (tx, fileId) =>
+        tx.releases.update(id, { coverPicture: fileId })
+      ),
 
     // Tracks
 

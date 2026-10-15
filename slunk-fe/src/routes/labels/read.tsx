@@ -2,7 +2,7 @@ import { useMutation, useQuery } from "@apollo/client/react"
 import { useParams } from "react-router"
 
 import { ButtonLink } from "@/components/button-link"
-import { Cover } from "@/components/cover"
+import { CoverChooser } from "@/components/cover-chooser"
 import { DeleteButton } from "@/components/delete-button"
 import { PER_PAGE } from "@/components/list/list-layout"
 import { Pager } from "@/components/list/pager"
@@ -47,6 +47,17 @@ const LabelQuery = graphql(`
   }
 `)
 
+const SetLabelPicture = graphql(`
+  mutation SetLabelPicture($id: ID!, $picture: FileRefInput!) {
+    setLabelPicture(id: $id, picture: $picture) {
+      id
+      picture {
+        id
+      }
+    }
+  }
+`)
+
 const DeleteLabel = graphql(`
   mutation DeleteLabel($id: ID!) {
     deleteLabel(id: $id)
@@ -66,6 +77,7 @@ export function LabelRead() {
     },
   })
   const [deleteLabel] = useMutation(DeleteLabel, { variables: { id } })
+  const [setPicture] = useMutation(SetLabelPicture)
 
   if (data && !data.label) return <NotFound />
   const label = data?.label
@@ -100,10 +112,14 @@ export function LabelRead() {
         ) : (
           <>
             <div className="flex items-center gap-4">
-              <Cover
+              <CoverChooser
                 file={label.picture}
                 alt={`${label.name} logo`}
                 className="size-24"
+                noun="logo"
+                onChoose={(picture) =>
+                  setPicture({ variables: { id, picture } })
+                }
               />
               <h1 className="font-heading text-2xl font-semibold">
                 {label.name}

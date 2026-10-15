@@ -373,6 +373,12 @@ export type Mutation = {
   /** Removes a tag from many releases at once: one of its values, or all of them when `value` is left out. Returns how many releases changed. */
   removeTagFromReleases: Scalars['Int']['output'];
   renameListItem: ListItem;
+  /** Sets only the picture. A file given by path is registered first, in the same transaction. */
+  setArtistPicture: Artist;
+  /** Sets only the logo. A file given by path is registered first, in the same transaction. */
+  setLabelPicture: Label;
+  /** Sets only the cover, keeping the file links. A file given by path is registered first, in the same transaction. */
+  setReleaseCover: Release;
   /** Replaces the release's credits and its tracks' credits. */
   setReleaseCredits: Release;
   /** Sets the cover and replaces the file links. Files given by path are registered first. */
@@ -491,6 +497,24 @@ export type MutationRenameListItemArgs = {
   id: Scalars['ID']['input'];
   kind: ListKind;
   name: Scalars['String']['input'];
+};
+
+
+export type MutationSetArtistPictureArgs = {
+  id: Scalars['ID']['input'];
+  picture: FileRefInput;
+};
+
+
+export type MutationSetLabelPictureArgs = {
+  id: Scalars['ID']['input'];
+  picture: FileRefInput;
+};
+
+
+export type MutationSetReleaseCoverArgs = {
+  cover: FileRefInput;
+  id: Scalars['ID']['input'];
 };
 
 
@@ -1513,6 +1537,9 @@ export type MutationResolvers<ContextType = Context, ParentType extends Resolver
   relinkFiles?: Resolver<Array<ResolversTypes['File']>, ParentType, ContextType, RequireFields<MutationRelinkFilesArgs, 'moves'>>;
   removeTagFromReleases?: Resolver<ResolversTypes['Int'], ParentType, ContextType, RequireFields<MutationRemoveTagFromReleasesArgs, 'ids' | 'tagId' | 'type'>>;
   renameListItem?: Resolver<ResolversTypes['ListItem'], ParentType, ContextType, RequireFields<MutationRenameListItemArgs, 'id' | 'kind' | 'name'>>;
+  setArtistPicture?: Resolver<ResolversTypes['Artist'], ParentType, ContextType, RequireFields<MutationSetArtistPictureArgs, 'id' | 'picture'>>;
+  setLabelPicture?: Resolver<ResolversTypes['Label'], ParentType, ContextType, RequireFields<MutationSetLabelPictureArgs, 'id' | 'picture'>>;
+  setReleaseCover?: Resolver<ResolversTypes['Release'], ParentType, ContextType, RequireFields<MutationSetReleaseCoverArgs, 'cover' | 'id'>>;
   setReleaseCredits?: Resolver<ResolversTypes['Release'], ParentType, ContextType, RequireFields<MutationSetReleaseCreditsArgs, 'id' | 'input'>>;
   setReleaseFiles?: Resolver<ResolversTypes['Release'], ParentType, ContextType, RequireFields<MutationSetReleaseFilesArgs, 'id' | 'input'>>;
   setReleaseTags?: Resolver<ResolversTypes['Release'], ParentType, ContextType, RequireFields<MutationSetReleaseTagsArgs, 'id' | 'tags'>>;
