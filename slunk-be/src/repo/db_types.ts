@@ -125,6 +125,13 @@ export interface ReleaseDateTags {
   value: number;
 }
 
+export interface ReleaseDiscTitles {
+  cd_number: number;
+  id: Generated<number>;
+  release_id: number;
+  title: string;
+}
+
 export interface ReleaseFormats {
   id: Generated<number>;
   name: string;
@@ -236,6 +243,7 @@ export interface DB {
   real_number_tags: RealNumberTags;
   release_credits: ReleaseCredits;
   release_date_tags: ReleaseDateTags;
+  release_disc_titles: ReleaseDiscTitles;
   release_formats: ReleaseFormats;
   release_formats_releases: ReleaseFormatsReleases;
   release_media: ReleaseMedia;

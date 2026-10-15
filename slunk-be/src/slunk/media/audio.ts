@@ -8,6 +8,8 @@ export type AudioTags = {
   albumArtists: string[]
   trackNumber: number | null
   discNumber: number | null
+  /** The disc's own title: DISCSUBTITLE, or TSST in MP3s */
+  discTitle: string | null
   /** `2006`, `2006-01` or `2006-01-10` */
   date: string | null
 }
@@ -25,6 +27,8 @@ export async function readAudio(
       skipCovers: true,
     })
     const albumArtist = common.albumartist?.trim()
+    // Typed as a list, but music-metadata gives a single string
+    const discTitle = [common.discsubtitle ?? []].flat()[0]?.trim()
     return {
       durationMs:
         format.duration === undefined
@@ -37,6 +41,7 @@ export async function readAudio(
         albumArtists: albumArtist ? [albumArtist] : [],
         trackNumber: common.track.no ?? null,
         discNumber: common.disk.no ?? null,
+        discTitle: discTitle || null,
         date: dateOf(common.date, common.year),
       },
     }
@@ -50,6 +55,7 @@ export async function readAudio(
         albumArtists: [],
         trackNumber: null,
         discNumber: null,
+        discTitle: null,
         date: null,
       },
     }

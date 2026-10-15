@@ -63,6 +63,10 @@ const ReleaseQueryDocument = graphql(`
         }
         values
       }
+      discTitles {
+        cdNumber
+        title
+      }
       tracks {
         id
         title
@@ -267,6 +271,9 @@ function Tracklist({ release }: { release: Release }) {
   const [playing, setPlaying] = useState<string | null>(null)
   const audio = useRef<HTMLAudioElement>(null)
   const discs = [...new Set(release.tracks.map((track) => track.cdNumber))]
+  const titles = new Map(
+    release.discTitles.map(({ cdNumber, title }) => [cdNumber, title])
+  )
 
   function toggleCredits() {
     const next = !hideCredits
@@ -309,9 +316,12 @@ function Tracklist({ release }: { release: Release }) {
       )}
       {discs.map((disc) => (
         <div key={disc} className="flex flex-col">
-          {discs.length > 1 && (
+          {(discs.length > 1 || titles.has(disc)) && (
             <h3 className="border-b py-1 font-medium text-muted-foreground">
               CD {disc}
+              {titles.has(disc) && (
+                <span className="text-foreground"> · {titles.get(disc)}</span>
+              )}
             </h3>
           )}
           {release.tracks

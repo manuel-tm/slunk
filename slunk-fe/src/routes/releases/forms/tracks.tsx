@@ -1,6 +1,6 @@
 import { useMutation, useQuery } from "@apollo/client/react"
 import { XIcon } from "lucide-react"
-import { useState } from "react"
+import { Fragment, useState } from "react"
 
 import { ChipList } from "@/components/chip-list"
 import type { Option } from "@/components/picker"
@@ -9,6 +9,7 @@ import { QueryError } from "@/components/query-error"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   Table,
@@ -30,6 +31,10 @@ const ReleaseTracksFormQueryDocument = graphql(`
       variousArtists
       artists {
         id
+      }
+      discTitles {
+        cdNumber
+        title
       }
       tracks {
         id
@@ -54,6 +59,7 @@ const ReleaseTracksFormQueryDocument = graphql(`
     trackSuggestions(folder: $folder) @include(if: $withFolder) {
       path
       cdNumber
+      discTitle
       trackNumber
       title
       durationMs
@@ -79,9 +85,17 @@ const ReleaseTracksFormQueryDocument = graphql(`
 `)
 
 const SetReleaseTracks = graphql(`
-  mutation SetReleaseTracks($id: ID!, $tracks: [ReleaseTrackInput!]!) {
-    setReleaseTracks(id: $id, tracks: $tracks) {
+  mutation SetReleaseTracks(
+    $id: ID!
+    $tracks: [ReleaseTrackInput!]!
+    $discTitles: [DiscTitleInput!]!
+  ) {
+    setReleaseTracks(id: $id, tracks: $tracks, discTitles: $discTitles) {
       id
+      discTitles {
+        cdNumber
+        title
+      }
       tracks {
         id
         cdNumber
@@ -173,6 +187,20 @@ function initialRows(
   )
 }
 
+/** Titles by disc number: the release's, and else the folder's tags. */
+function initialTitles(data: ReleaseTracksFormQuery): Record<number, string> {
+  const titles: Record<number, string> = {}
+  for (const { cdNumber, title } of data.release?.discTitles ?? []) {
+    titles[cdNumber] = title
+  }
+  for (const { cdNumber, discTitle } of data.trackSuggestions ?? []) {
+    if (discTitle && titles[cdNumber] === undefined) {
+      titles[cdNumber] = discTitle
+    }
+  }
+  return titles
+}
+
 /**
  * A release's tracks (design §7.6): a row each, in order. Saving deletes the
  * tracks whose rows were removed, not their files. With `folder` (the
@@ -207,6 +235,7 @@ export function ReleaseTracksForm({
       releaseId={releaseId}
       variousArtists={data.release?.variousArtists ?? false}
       initial={initialRows(data, releaseId)}
+      initialTitles={initialTitles(data)}
       submitLabel={submitLabel}
       onSaved={onSaved}
     />
@@ -217,16 +246,19 @@ function Rows({
   releaseId,
   variousArtists,
   initial,
+  initialTitles,
   submitLabel,
   onSaved,
 }: {
   releaseId: string
   variousArtists: boolean
   initial: TrackRow[]
+  initialTitles: Record<number, string>
   submitLabel: string
   onSaved: () => void
 }) {
   const [rows, setRows] = useState(initial)
+  const [titles, setTitles] = useState(initialTitles)
   const [pickerKey, setPickerKey] = useState(0)
   const [save, { loading, error }] = useMutation(SetReleaseTracks)
   const edit = (key: string, changes: Partial<TrackRow>) =>
@@ -234,6 +266,10 @@ function Rows({
       current.map((row) => (row.key === key ? { ...row, ...changes } : row))
     )
   const included = rows.filter((row) => row.include)
+  // A title field for each disc the saved tracks will be on
+  const discs = [...new Set(included.map((row) => row.cdNumber))]
+    .filter((disc) => Number.isInteger(disc) && disc > 0)
+    .sort((a, b) => a - b)
 
   return (
     <form
@@ -254,6 +290,10 @@ function Rows({
                 artistIds: row.artists.map((a) => a.id),
                 featureIds: row.features.map((a) => a.id),
               })),
+              discTitles: discs.map((disc) => ({
+                cdNumber: disc,
+                title: titles[disc] ?? "",
+              })),
             },
           })
           onSaved()
@@ -268,6 +308,29 @@ function Rows({
           : "On a regular release, leave artists empty and the release's artists perform the track."}
       </p>
       {error && <QueryError error={error} title="Can't save the tracks" />}
+      {discs.length > 0 && (
+        <fieldset className="flex max-w-2xl flex-col gap-2">
+          <legend className="mb-2 font-medium">Disc titles</legend>
+          <div className="grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-2">
+            {discs.map((disc) => (
+              <Fragment key={disc}>
+                <Label htmlFor={`disc-title-${disc}`}>Disc {disc}</Label>
+                <Input
+                  id={`disc-title-${disc}`}
+                  placeholder="No title"
+                  value={titles[disc] ?? ""}
+                  onChange={(e) =>
+                    setTitles((current) => ({
+                      ...current,
+                      [disc]: e.target.value,
+                    }))
+                  }
+                />
+              </Fragment>
+            ))}
+          </div>
+        </fieldset>
+      )}
       <Table>
         <TableHeader>
           <TableRow>

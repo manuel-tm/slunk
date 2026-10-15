@@ -23,6 +23,7 @@ export const apollo = new ApolloClient({
         "formats",
         "media",
         "tracks",
+        "discTitles",
         "credits",
         "files",
         "tags"

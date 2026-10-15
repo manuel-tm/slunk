@@ -174,6 +174,43 @@ export function createReleasesRepository(db: Kysely<DB>): ReleasesRepository {
       }
     },
 
+    async discTitlesOf(releaseIds) {
+      const rows: { releaseId: number; cdNumber: number; title: string }[] = []
+      for (const chunk of chunks(releaseIds)) {
+        const found = await db
+          .selectFrom("release_disc_titles")
+          .select(["release_id as releaseId", "cd_number as cdNumber", "title"])
+          .where("release_id", "in", chunk)
+          .orderBy("release_id")
+          .orderBy("cd_number")
+          .execute()
+        rows.push(...found)
+      }
+      return groupBy(
+        rows,
+        (row) => row.releaseId,
+        ({ cdNumber, title }) => ({ cdNumber, title })
+      )
+    },
+
+    async setDiscTitles(releaseId, titles) {
+      await db
+        .deleteFrom("release_disc_titles")
+        .where("release_id", "=", releaseId)
+        .execute()
+      if (titles.length === 0) return
+      await db
+        .insertInto("release_disc_titles")
+        .values(
+          titles.map(({ cdNumber, title }) => ({
+            release_id: releaseId,
+            cd_number: cdNumber,
+            title,
+          }))
+        )
+        .execute()
+    },
+
     async withoutArtists() {
       const rows = await db
         .selectFrom("releases")

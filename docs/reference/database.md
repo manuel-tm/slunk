@@ -10,8 +10,9 @@ This is the schema as built, by these migrations in `slunk-be/priv/repo/migratio
 | `20261013060918_add_tag_value_rules` | The triggers that check date and number tag values |
 | `20261014052413_add_track_tags` | Tag values on tracks, and the `<type>_tags_multiple_off` triggers that check them too |
 | `20261015192802_free_text_credit_roles` | Credit lines: `release_credits` and `track_credits` again, now with a free-text `role`, and `artists_release_credits` and `artists_track_credits`. It drops `credit_roles` and the old credits. |
+| `20261015195853_add_disc_titles` | Disc titles: `release_disc_titles`, and the triggers that keep each title on a disc with tracks |
 
-The reasoning behind it is in [design §4](../design/1_introduction.md#4-data-model), and its appendices [A](../design/1_introduction.md#appendix-a-more-integrity-rules-in-the-database) and [D](../design/1_introduction.md#appendix-d-tag-values-are-checked-in-the-database). Credits follow [2_credits.md §4](../design/2_credits.md#4-data-model) instead. Every column's type is in `slunk-be/src/repo/db_types.ts`, which is generated from the database.
+The reasoning behind it is in [design §4](../design/1_introduction.md#4-data-model), and its appendices [A](../design/1_introduction.md#appendix-a-more-integrity-rules-in-the-database) and [D](../design/1_introduction.md#appendix-d-tag-values-are-checked-in-the-database). Credits follow [2_credits.md §4](../design/2_credits.md#4-data-model) instead. Disc titles have no design doc: [Disc titles](#disc-titles) below explains them. Every column's type is in `slunk-be/src/repo/db_types.ts`, which is generated from the database.
 
 How to connect, migrate and seed: [development/backend.md](../development/backend.md#the-database).
 
@@ -33,6 +34,7 @@ How to connect, migrate and seed: [development/backend.md](../development/backen
 | `labels` | `name`, and `picture` → `files` (the logo) |
 | `releases` | `title`, `release_date` with `release_date_precision`, `catalog_number`, `cover_picture` → `files`, `various_artists` |
 | `tracks` | `title`, `duration_ms`, `track_number`, `cd_number` (default 1), `release_id`, and `file_id` (its audio) |
+| `release_disc_titles` | A disc's own title, as printed: `release_id`, `cd_number` and `title`. Only discs with a title have a row. |
 | `artists_releases` | Who a release is by, with `position` |
 | `artists_tracks` | Who performs a track, with `featured` and `position` |
 | `labels_releases` | A release's labels, with `position` |
@@ -57,7 +59,7 @@ How to connect, migrate and seed: [development/backend.md](../development/backen
   - `sha256` is 64 lowercase hex characters.
 - **Text:** these values are non-empty, with no leading or trailing spaces:
   - names: of artists, labels, formats, media and tag definitions;
-  - titles: of releases and tracks;
+  - titles: of releases, tracks and discs;
   - credit lines' `role`, `catalog_number`, `release_text_tags.value`, `track_text_tags.value` and file link notes.
 
   A nullable one (`catalog_number`, `note`) may also be NULL.
@@ -75,6 +77,7 @@ How to connect, migrate and seed: [development/backend.md](../development/backen
   - `(release_id, cd_number, track_number)` is unique;
   - `file_id` is unique: a file is the audio of at most one track;
   - `track_number > 0`, `cd_number > 0`, `duration_ms >= 0`.
+- **Disc titles:** `(release_id, cd_number)` is unique, so a disc has one title, and `cd_number > 0`.
 - **Links:** an artist, label, format, medium or file appears at most once per release or track. An artist appears once per credit line, and two artists on a line can't share a `position`. `position >= 0`.
 - **Tag values**, on releases and tracks alike:
   - `(release_id, tag_id, value)` and `(track_id, tag_id, value)` are unique;
@@ -98,8 +101,18 @@ Each trigger aborts the statement with the error shown.
 | `files_type_stays_image` | `a cover or picture must stay an image` | A file used as a cover or picture changes `type` |
 | `<owner>_date_tags_value_is_day_insert`, `…_update` | `a date tag's value must be a day, at midnight UTC` | `value % 86400 <> 0`, on insert or on changing `value` |
 | `<owner>_real_number_tags_value_is_finite_insert`, `…_update` | `a number tag's value must be finite` | `value` is infinite, on insert or on changing `value`. NaN is already NULL, which `NOT NULL` rejects. |
+| `release_disc_titles_disc_has_tracks_insert`, `…_update` | `a disc title needs a track on its disc` | A title is inserted, or moved to another `release_id` or `cd_number`, where the release has no track on that disc |
 
 `<type>` is `text`, `real_number` or `date`, and `<owner>` is `release` or `track`.
+
+Two more triggers don't abort anything. `tracks_empty_disc_loses_title_delete` and `…_update` delete a disc's title when its last track leaves it: see [Disc titles](#disc-titles).
+
+### Disc titles
+
+A disc isn't a table: it's the `cd_number` its tracks share. It exists while it has tracks, and a title belongs to it:
+- A title needs a track on its disc. A title for a disc with no tracks fails with `a disc title needs a track on its disc`.
+- When a disc's last track leaves it, its title is deleted, by `tracks_empty_disc_loses_title_delete` and `…_update`. A track leaves its disc when it's deleted, or when its `cd_number` or `release_id` changes.
+- So the app saves a release's tracks first, then its disc titles.
 
 ### Credit lines
 
@@ -122,7 +135,7 @@ Foreign keys decide what a delete does.
   - a label on a release;
   - a format, medium or tag definition in use (a tag is in use on a release or a track).
 - **CASCADE:** deleting a row also deletes the link rows that describe it:
-  - a release: its artists, labels, formats, media, credit lines, file links and tag values;
+  - a release: its artists, labels, formats, media, credit lines, disc titles, file links and tag values;
   - a track: its artists, credit lines, file links and tag values;
   - a credit line: its artists;
   - an artist: its file links.

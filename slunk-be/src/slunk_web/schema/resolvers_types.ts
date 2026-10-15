@@ -140,6 +140,19 @@ export type DateTagMultiValueTracksArgs = {
   perPage: Scalars['Int']['input'];
 };
 
+/** A disc's own title, as printed: "Live At Madison Square Garden". It has no id: it's part of its release. */
+export type DiscTitle = {
+  __typename?: 'DiscTitle';
+  cdNumber: Scalars['Int']['output'];
+  title: Scalars['String']['output'];
+};
+
+export type DiscTitleInput = {
+  cdNumber: Scalars['Int']['input'];
+  /** Trimmed. Blank means no title. */
+  title: Scalars['String']['input'];
+};
+
 /** A file the user registered. Slunk only reads it. */
 export type File = {
   __typename?: 'File';
@@ -531,6 +544,7 @@ export type MutationSetReleaseTagsArgs = {
 
 
 export type MutationSetReleaseTracksArgs = {
+  discTitles?: InputMaybe<Array<DiscTitleInput>>;
   id: Scalars['ID']['input'];
   tracks: Array<ReleaseTrackInput>;
 };
@@ -807,6 +821,8 @@ export type Release = {
   catalogNumber?: Maybe<Scalars['String']['output']>;
   cover?: Maybe<File>;
   credits: Array<Credit>;
+  /** By disc number. Only discs with a title are listed. */
+  discTitles: Array<DiscTitle>;
   /** The tracks' total playing time, or null with no durations. */
   durationMs?: Maybe<Scalars['Float']['output']>;
   /** The cover and the linked files. */
@@ -1096,6 +1112,8 @@ export type TrackSuggestion = {
   __typename?: 'TrackSuggestion';
   artists: Array<ArtistSuggestion>;
   cdNumber: Scalars['Int']['output'];
+  /** The disc's title tag: DISCSUBTITLE, or TSST in MP3s */
+  discTitle?: Maybe<Scalars['String']['output']>;
   durationMs?: Maybe<Scalars['Float']['output']>;
   /** The file's registration, if it's registered */
   file?: Maybe<File>;
@@ -1203,6 +1221,8 @@ export type ResolversTypes = {
   Credit: ResolverTypeWrapper<CreditModel>;
   CreditInput: CreditInput;
   DateTag: ResolverTypeWrapper<TagModel>;
+  DiscTitle: ResolverTypeWrapper<DiscTitle>;
+  DiscTitleInput: DiscTitleInput;
   File: ResolverTypeWrapper<FileRecordModel>;
   FileCounts: ResolverTypeWrapper<FileCounts>;
   FileLink: ResolverTypeWrapper<FileLinkModel>;
@@ -1277,6 +1297,8 @@ export type ResolversParentTypes = {
   Credit: CreditModel;
   CreditInput: CreditInput;
   DateTag: TagModel;
+  DiscTitle: DiscTitle;
+  DiscTitleInput: DiscTitleInput;
   File: FileRecordModel;
   FileCounts: FileCounts;
   FileLink: FileLinkModel;
@@ -1404,6 +1426,11 @@ export type DateTagResolvers<ContextType = Context, ParentType extends Resolvers
   trackCount?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
   type?: Resolver<ResolversTypes['TagType'], ParentType, ContextType>;
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
+};
+
+export type DiscTitleResolvers<ContextType = Context, ParentType extends ResolversParentTypes['DiscTitle'] = ResolversParentTypes['DiscTitle']> = {
+  cdNumber?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
+  title?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
 };
 
 export type FileResolvers<ContextType = Context, ParentType extends ResolversParentTypes['File'] = ResolversParentTypes['File']> = {
@@ -1591,6 +1618,7 @@ export type ReleaseResolvers<ContextType = Context, ParentType extends Resolvers
   catalogNumber?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   cover?: Resolver<Maybe<ResolversTypes['File']>, ParentType, ContextType>;
   credits?: Resolver<Array<ResolversTypes['Credit']>, ParentType, ContextType>;
+  discTitles?: Resolver<Array<ResolversTypes['DiscTitle']>, ParentType, ContextType>;
   durationMs?: Resolver<Maybe<ResolversTypes['Float']>, ParentType, ContextType>;
   fileCount?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
   files?: Resolver<Array<ResolversTypes['FileLink']>, ParentType, ContextType>;
@@ -1711,6 +1739,7 @@ export type TrackPageResolvers<ContextType = Context, ParentType extends Resolve
 export type TrackSuggestionResolvers<ContextType = Context, ParentType extends ResolversParentTypes['TrackSuggestion'] = ResolversParentTypes['TrackSuggestion']> = {
   artists?: Resolver<Array<ResolversTypes['ArtistSuggestion']>, ParentType, ContextType>;
   cdNumber?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
+  discTitle?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   durationMs?: Resolver<Maybe<ResolversTypes['Float']>, ParentType, ContextType>;
   file?: Resolver<Maybe<ResolversTypes['File']>, ParentType, ContextType>;
   path?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
@@ -1735,6 +1764,7 @@ export type Resolvers<ContextType = Context> = {
   ChangedFile?: ChangedFileResolvers<ContextType>;
   Credit?: CreditResolvers<ContextType>;
   DateTag?: DateTagResolvers<ContextType>;
+  DiscTitle?: DiscTitleResolvers<ContextType>;
   File?: FileResolvers<ContextType>;
   FileCounts?: FileCountsResolvers<ContextType>;
   FileLink?: FileLinkResolvers<ContextType>;

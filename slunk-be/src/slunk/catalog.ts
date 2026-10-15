@@ -4,6 +4,7 @@ import { basename, dirname } from "node:path"
 import type {
   CatalogStore,
   CreditOwner,
+  DiscTitle,
   ListKind,
   Release,
   ReleaseLink,
@@ -367,6 +368,7 @@ export function createCatalog({
     releasesTitled: (title: string) => store.releases.findByTitle(title),
     releaseLinksOf: (link: ReleaseLink, ids: readonly number[]) =>
       store.releases.linksOf(link, ids),
+    discTitlesOf: (ids: readonly number[]) => store.releases.discTitlesOf(ids),
 
     /** `2006`, `2006-01` or `2006-01-10`, with only the known parts */
     released: (release: Release) =>
@@ -414,11 +416,17 @@ export function createCatalog({
     /**
      * Saves a release's whole track list: updates the rows with an id,
      * creates tracks for the others (registering files given by path), and
-     * deletes the tracks left out. Their files stay registered.
+     * deletes the tracks left out. Their files stay registered. Disc titles,
+     * when given, replace the release's.
      */
-    async setReleaseTracks(id: number, rows: ReleaseTrackInput[]) {
+    async setReleaseTracks(
+      id: number,
+      rows: ReleaseTrackInput[],
+      discTitles?: DiscTitle[] | null
+    ) {
       const release = await store.releases.get(id)
       if (!release) throw notFound("release", id)
+      const titles = discTitles ? discTitleRows(discTitles) : null
       const fresh = rows.filter((row) => row.id == null)
       const prepared = await prepareRefs(fresh)
       // Durations are read now, before the transaction holds the write lock
@@ -471,6 +479,8 @@ export function createCatalog({
             trackArtists(row.artistIds, row.featureIds)
           )
         }
+        // After the tracks, since a title needs a track on its disc
+        if (titles) await tx.releases.setDiscTitles(id, titles)
         return release
       })
     },
@@ -696,6 +706,7 @@ export function createCatalog({
           file: file.file,
           track: file.file ? (tracks.get(file.file.id) ?? null) : null,
           cdNumber,
+          discTitle: tags.discTitle,
           trackNumber: tags.trackNumber ?? fromName.trackNumber ?? position,
           title: tags.title ?? fromName.title,
           artistNames: tags.artists,
@@ -794,6 +805,21 @@ function creditLines(credits: CreditInput[]): CreditInput[] {
     }
     roles.add(key)
     return { role: trimmed, artistIds: unique(artistIds) }
+  })
+}
+
+/**
+ * Disc titles as they're saved: trimmed, and a blank one left out, since a
+ * disc without a title has no row. Refuses two titles for one disc.
+ */
+function discTitleRows(titles: DiscTitle[]): DiscTitle[] {
+  const discs = new Set<number>()
+  return titles.flatMap(({ cdNumber, title }) => {
+    const trimmed = title.trim()
+    if (!trimmed) return []
+    if (discs.has(cdNumber)) throw new Error(`Disc ${cdNumber} has two titles`)
+    discs.add(cdNumber)
+    return [{ cdNumber, title: trimmed }]
   })
 }
 

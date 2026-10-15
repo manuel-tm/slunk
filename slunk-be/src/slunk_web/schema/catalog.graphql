@@ -73,7 +73,12 @@ extend type Mutation {
   "Fails while the release has tracks."
   deleteRelease(id: ID!): ID!
   "Saves the whole track list: rows with an id are updated, the others create tracks, and tracks left out are deleted. Their files stay registered."
-  setReleaseTracks(id: ID!, tracks: [ReleaseTrackInput!]!): Release!
+  setReleaseTracks(
+    id: ID!
+    tracks: [ReleaseTrackInput!]!
+    "Replaces the disc titles. A blank title is left out. Left out, they stay as they are, except on a disc left without tracks, which loses its title."
+    discTitles: [DiscTitleInput!]
+  ): Release!
   "Sets the cover and replaces the file links. Files given by path are registered first."
   setReleaseFiles(id: ID!, input: ReleaseFilesInput!): Release!
   "Sets only the cover, keeping the file links. A file given by path is registered first, in the same transaction."
@@ -167,6 +172,8 @@ type Release {
   media: [ReleaseMedium!]!
   "In order: disc, then number."
   tracks: [Track!]!
+  "By disc number. Only discs with a title are listed."
+  discTitles: [DiscTitle!]!
   credits: [Credit!]!
   files: [FileLink!]!
   "The cover and the linked files."
@@ -196,6 +203,12 @@ type Track {
   performers: [Artist!]!
   credits: [Credit!]!
   files: [FileLink!]!
+}
+
+"A disc's own title, as printed: \"Live At Madison Square Garden\". It has no id: it's part of its release."
+type DiscTitle {
+  cdNumber: Int!
+  title: String!
 }
 
 "A credit line: a role, as printed, and the artists who hold it, in order. It has no id: release and track credits live in different tables, so their ids would collide."
@@ -300,6 +313,8 @@ type TrackSuggestion {
   "The track the file is already the audio of, on any release"
   track: Track
   cdNumber: Int!
+  "The disc's title tag: DISCSUBTITLE, or TSST in MP3s"
+  discTitle: String
   trackNumber: Int!
   title: String!
   artists: [ArtistSuggestion!]!
@@ -352,6 +367,12 @@ input ReleaseTrackInput {
   title: String!
   artistIds: [ID!]! = []
   featureIds: [ID!]! = []
+}
+
+input DiscTitleInput {
+  cdNumber: Int!
+  "Trimmed. Blank means no title."
+  title: String!
 }
 
 input ReleaseFilesInput {

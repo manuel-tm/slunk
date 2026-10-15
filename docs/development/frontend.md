@@ -189,12 +189,18 @@ Delete is a button on the read page that opens an `alert-dialog` (design §7.2).
 `routes/import/steps.tsx` is the import (design §7.9), a route per step, with a stepper at the top whose steps are links once the release exists:
 1. **Folder** (`/import?path=…`): the `FolderBrowser`.
 2. **Release** (`/import/release?folder=…`): the details form, prefilled from `releaseSuggestion`. Tag artist names that match an artist are picked already, and the others are named so they can be created. Saving replaces the history entry with `/import/:id/release?folder=…`, where going back edits the release.
-3. **Tracks:** the tracks form with `folder`. There's a row for each audio file in the folder that isn't a track yet, prefilled from `trackSuggestions`. On a regular release, tag artists who are release artists aren't added to the tracks.
+3. **Tracks:** the tracks form with `folder`. There's a row for each audio file in the folder that isn't a track yet, prefilled from `trackSuggestions`. On a regular release, tag artists who are release artists aren't added to the tracks. A disc without a title yet gets its files' disc title tag.
 4. **Cover & files:** the folder's images and other files. The cover is chosen among the images, defaulting to one named cover, folder or front. Each other file gets a checkbox and a note. The cover isn't also a file link.
 5. **Credits:** the credits form.
 6. **Tags:** the tags form. Finish opens the release page.
 
 Files are registered only when a step saves them, together with what uses them.
+
+### Disc titles
+
+A disc can have its own title, as printed: "Live At Madison Square Garden - February 5, 2009".
+- **The Tracks tab** (`forms/tracks.tsx`) has a title field above the table for each disc its rows are on, in disc order. They're saved with the tracks. A blank one means no title, and a disc left without rows loses its title.
+- **The release page** heads each disc with its number and title: "CD 2 · Live At Madison Square Garden - February 5, 2009". Discs are headed when there's more than one, or when the disc has a title.
 
 ### Tags
 

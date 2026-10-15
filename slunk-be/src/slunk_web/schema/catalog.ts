@@ -161,7 +161,7 @@ export const catalogResolvers: Resolvers = {
       await catalog.deleteRelease(n(id))
       return id
     },
-    setReleaseTracks: (_parent, { id, tracks }, { catalog }) =>
+    setReleaseTracks: (_parent, { id, tracks, discTitles }, { catalog }) =>
       catalog.setReleaseTracks(
         n(id),
         tracks.map((row) => ({
@@ -172,7 +172,8 @@ export const catalogResolvers: Resolvers = {
           title: row.title,
           artistIds: ids(row.artistIds),
           featureIds: ids(row.featureIds),
-        }))
+        })),
+        discTitles
       ),
     setReleaseFiles: (_parent, { id, input }, { catalog }) =>
       catalog.setReleaseFiles(n(id), {
@@ -271,6 +272,8 @@ export const catalogResolvers: Resolvers = {
       loadAll(loaders.medium, await loaders.releaseMedia.load(release.id)),
     tracks: (release, _args, { loaders }) =>
       loaders.releaseTracks.load(release.id),
+    discTitles: (release, _args, { loaders }) =>
+      loaders.releaseDiscTitles.load(release.id),
     credits: (release, _args, { loaders }) =>
       loaders.releaseCredits.load(release.id),
     files: (release, _args, { loaders }) =>

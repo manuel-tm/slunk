@@ -46,6 +46,9 @@ export type Track = {
 
 export type TrackArtist = { artistId: number; featured: boolean }
 
+/** A disc's own title, as printed. Only discs with a title have one. */
+export type DiscTitle = { cdNumber: number; title: string }
+
 /** A credit line: a role as printed, and the artists who hold it, in order. */
 export type Credit = { role: string; artistIds: number[] }
 
@@ -131,6 +134,10 @@ export interface ReleasesRepository {
   ): Promise<Map<number, number[]>>
   /** Replaces the links; their order is the display order */
   setLinks(link: ReleaseLink, releaseId: number, ids: number[]): Promise<void>
+  /** Disc titles by release, by disc number */
+  discTitlesOf(releaseIds: readonly number[]): Promise<Map<number, DiscTitle[]>>
+  /** Replaces the disc titles. Each disc needs a track already. */
+  setDiscTitles(releaseId: number, titles: DiscTitle[]): Promise<void>
   trackCount(id: number): Promise<number>
   /** Releases with no artist of their own, for the library check */
   withoutArtists(): Promise<Release[]>

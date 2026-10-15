@@ -6,7 +6,7 @@ The backend implements the whole base design ([1_introduction.md](../design/1_in
 - the database connection, the migration runner with backup retention, and the migrations;
 - a GraphQL server with a `health` query;
 - the media context: registering files, browsing the library on disk, serving the files' bytes, and file links;
-- the catalog context: artists, labels, releases with their formats, media and labels, tracks, credits, and suggestions for importing a folder;
+- the catalog context: artists, labels, releases with their formats, media and labels, tracks, disc titles, credits, and suggestions for importing a folder;
 - the tagging context: tag definitions, their values on releases and tracks, the lists' tag filters, and bulk edits;
 - the library check: what changed on disk since files were registered, and gaps in the catalog.
 
@@ -154,7 +154,7 @@ The path is under `/raw` so it can't collide with the frontend's `/files` pages 
 
 ## The catalog context
 
-`src/slunk/catalog.ts` holds what the user catalogs: artists, labels, releases, tracks, credits, and the two lists the user manages (release formats, release media).
+`src/slunk/catalog.ts` holds what the user catalogs: artists, labels, releases, tracks, disc titles, credits, and the two lists the user manages (release formats, release media).
 
 - **Lists** share one repository and one set of functions (`listItems`, `createListItem`, …), with a `kind`. Names are unique ignoring case.
 - **Release dates** are typed as `2006`, `2006-01` or `2006-01-10`, which also sets the precision (`dates.ts`). They're stored at midnight UTC on the first unknown day, and returned with only their known parts. An impossible date, like `2013-02-30`, is refused.
@@ -165,6 +165,11 @@ The path is under `/raw` so it can't collide with the frontend's `/files` pages 
   - tracks left out are deleted, but their files stay registered.
 
   Before saving, the release's track numbers are shifted out of the way, so swapping two numbers can't trip the unique (release, disc, number) index.
+- **Disc titles** are saved with the tracks, by `setReleaseTracks`, after them: a title needs a track on its disc ([reference/database.md](../reference/database.md#disc-titles)).
+  - Given, they replace the release's titles. Left out, they stay as they are.
+  - Titles are trimmed, and a blank one is left out, since a disc without a title has no row.
+  - Two titles for one disc are refused.
+  - A disc whose last track leaves it loses its title, whichever mutation moves or deletes the track. The database does that.
 - **Covers, pictures and logos** can be set on their own (`setReleaseCover`, `setArtistPicture`, `setLabelPicture`), from a file id or a path. A path that isn't registered yet is registered in the same transaction, so a file the database refuses (one that isn't an image) isn't left registered. The other fields, and a release's file links, stay as they are.
 - **Durations** are read from the audio file when a track is created, or when its file changes.
 - **Track artists** are the track's own performers. Features are kept apart, and an artist can't be both on one track.
@@ -182,7 +187,7 @@ The path is under `/raw` so it can't collide with the frontend's `/files` pages 
 - **Deletes** check what blocks them first, and the error says what does: "The artist is still used: release artist on 1 release, credited 2 times". Each entity's `blockers` field gives the same reasons ahead of time, for the delete dialog.
 - **Import suggestions** (design §7.9) only read the folder:
   - `suggestRelease(folder)`: the most common album, date and album artist tags, or else the folder's name. Also the releases with that title already, and how many audio files, images and other files the folder holds.
-  - `suggestTracks(folder)`: a row for each audio file, with disc, number and title from its tags. Without tags, they come from the path: `CD2/03 Title.flac` is disc 2, track 3, "Title".
+  - `suggestTracks(folder)`: a row for each audio file, with disc, number and title from its tags. Without tags, they come from the path: `CD2/03 Title.flac` is disc 2, track 3, "Title". Each row also has its disc's title tag (`DISCSUBTITLE`, or `TSST` in MP3s), if the file has one.
 
   The resolvers pair tag names with the artists that have exactly that name, ignoring case.
 - **The release list** filters by format, medium, label, artist and tags, and they combine. Tag filters come from the tagging context, already checked. `releaseIds` returns every matching release's id, for selecting them all in a bulk edit.
@@ -338,6 +343,7 @@ Using it:
 - **Ids:** a field called `id` must identify its object. Apollo Client caches objects by type and `id`, so two objects with the same `id` would be merged into one. So:
   - `FileUse` names the id of the release, artist or track that uses a file `entityId`;
   - `Credit` has no id, since release and track credits come from two tables whose ids overlap;
+  - `DiscTitle` has no id, since it's part of its release;
   - release formats and release media are two types (`ReleaseFormat`, `ReleaseMedium`) behind one `ListItem` interface, so format 1 and medium 1 stay apart;
   - tags are likewise `TextTag`, `NumberTag` and `DateTag` behind a `Tag` interface;
   - `TagValues`, a tag with its values on a release or track, has no id;
@@ -350,7 +356,7 @@ Using it:
   - `registerFiles`, `updateFile`, `deleteFile`: changes to the file records.
   - `artists`, `artist`, `labels`, `label`, `releases`, `release`, `tracks`, `track`, `listItems`, `listItem`: the catalog. `releases` filters by `format`, `medium`, `label`, `artist` and `tags`, `tracks` by `release` and `tags`. `releasesTitled` finds releases with a title, and `releaseIds` every release a filter matches. `creditRoles` suggests roles for credits.
   - `createArtist`, `updateArtist`, `deleteArtist`, and the same for labels, releases, tracks and list items.
-  - `setReleaseTracks`, `setReleaseFiles`, `setReleaseCredits`: a release's edit tabs. Files can be given by path, and they're registered first.
+  - `setReleaseTracks`, `setReleaseFiles`, `setReleaseCredits`: a release's edit tabs. Files can be given by path, and they're registered first. `setReleaseTracks` also takes the disc titles, which `Release.discTitles` reads.
   - `setReleaseCover`, `setArtistPicture`, `setLabelPicture`: only the image, from a file id or a path to register first. The pages set an empty one with them.
   - `catalogTotals`: the dashboard's numbers.
   - `releaseSuggestion`, `trackSuggestions`: the import's prefill.
