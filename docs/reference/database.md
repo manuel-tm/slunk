@@ -13,6 +13,7 @@ This is the schema as built, by these migrations in `slunk-be/priv/repo/migratio
 | `20261015195853_add_disc_titles` | Disc titles: `release_disc_titles`, and the triggers that keep each title on a disc with tracks |
 | `20261016144030_add_alternate_names` | Alternate names: `artist_alternate_names` and `label_alternate_names`, and `name_language` on `artists` and `labels` |
 | `20261016151144_add_credited_names` | Credited names: `credited_name_id` on the four artist link tables, which it rebuilds |
+| `20261016180957_add_alternate_titles` | Alternate titles: `release_alternate_titles`, `track_alternate_titles` and `release_disc_alternate_titles`, and the main titles' languages |
 
 The reasoning behind it is in [design §4](../design/1_introduction.md#4-data-model), and its appendices [A](../design/1_introduction.md#appendix-a-more-integrity-rules-in-the-database) and [D](../design/1_introduction.md#appendix-d-tag-values-are-checked-in-the-database). Credits follow [2_credits.md §4](../design/2_credits.md#4-data-model) instead, and alternate names [3_alternate_names.md §4](../design/3_alternate_names.md#4-data-model). Disc titles have no design doc: [Disc titles](#disc-titles) below explains them. Every column's type is in `slunk-be/src/repo/db_types.ts`, which is generated from the database.
 
@@ -36,9 +37,11 @@ How to connect, migrate and seed: [development/backend.md](../development/backen
 | `labels` | `name`, its language `name_language`, and `picture` → `files` (the logo) |
 | `artist_alternate_names` | Other names an artist goes by, with `position`: other spellings ("ALIKA"), initials, names in other scripts ("福居良"). Each has a `language`, a `note`, and `real_name` (0 or 1) for a legal or birth name. |
 | `label_alternate_names` | Other names a label goes by, built the same way, without `real_name` |
-| `releases` | `title`, `release_date` with `release_date_precision`, `catalog_number`, `cover_picture` → `files`, `various_artists` |
-| `tracks` | `title`, `duration_ms`, `track_number`, `cd_number` (default 1), `release_id`, and `file_id` (its audio) |
-| `release_disc_titles` | A disc's own title, as printed: `release_id`, `cd_number` and `title`. Only discs with a title have a row. |
+| `releases` | `title` and its language `title_language`, `release_date` with `release_date_precision`, `catalog_number`, `cover_picture` → `files`, `various_artists` |
+| `tracks` | `title` and its language `title_language` (NULL: the release's), `duration_ms`, `track_number`, `cd_number` (default 1), `release_id`, and `file_id` (its audio) |
+| `release_disc_titles` | A disc's own title, as printed: `release_id`, `cd_number`, `title` and its `language` (NULL: the release's). Only discs with a title have a row. |
+| `release_alternate_titles`, `track_alternate_titles` | Other titles a release or track goes by, with `position`: printed in another script or language ("シーナリィ"), or added in Slunk, like a translation. Each has a `language`, and `printed` (0 or 1, default 1). |
+| `release_disc_alternate_titles` | A disc's other titles, built the same way. They belong to its title: `disc_title_id` → `release_disc_titles` |
 | `artists_releases` | Who a release is by, with `position`, and `credited_name_id` (below) |
 | `artists_tracks` | Who performs a track, with `featured`, `position` and `credited_name_id` |
 | `labels_releases` | A release's labels, with `position` |
@@ -65,11 +68,13 @@ How to connect, migrate and seed: [development/backend.md](../development/backen
   - names: of artists, labels, formats, media and tag definitions;
   - titles: of releases, tracks and discs;
   - alternate names, and their notes;
+  - alternate titles;
   - credit lines' `role`, `catalog_number`, `release_text_tags.value`, `track_text_tags.value` and file link notes.
 
   A nullable one (`catalog_number`, `note`) may also be NULL.
-- **Languages:** `name_language` and `language` are NULL (unknown), or a BCP 47 tag in canonical shape: a 2- or 3-letter lowercase language, then letters, digits and single hyphens, not ending in one, like `ja` or `ja-Latn`. `und` isn't allowed: NULL is what unknown means.
+- **Languages:** `name_language`, `title_language` and `language` are NULL (unknown, or for a track or disc title, the release's), or a BCP 47 tag in canonical shape: a 2- or 3-letter lowercase language, then letters, digits and single hyphens, not ending in one, like `ja` or `ja-Latn`. `und` isn't allowed: NULL is what unknown means.
 - **Alternate names compare exactly,** case included, so "ALIKA" and "Alika" are different names. `(artist_id, name)` and `(label_id, name)` are unique. `real_name` is 0 or 1.
+- **Alternate titles compare exactly** too. `(release_id, title)`, `(track_id, title)` and `(disc_title_id, title)` are unique. `printed` is 0 or 1.
 - **Unique ignoring case** (`COLLATE NOCASE`):
   - names of formats, media and tag definitions;
   - a credit line's role, per release or track;
@@ -84,7 +89,7 @@ How to connect, migrate and seed: [development/backend.md](../development/backen
   - `(release_id, cd_number, track_number)` is unique;
   - `file_id` is unique: a file is the audio of at most one track;
   - `track_number > 0`, `cd_number > 0`, `duration_ms >= 0`.
-- **Disc titles:** `(release_id, cd_number)` is unique, so a disc has one title, and `cd_number > 0`.
+- **Disc titles:** `(release_id, cd_number)` is unique, so a disc has one title, and `cd_number > 0`. A disc's alternate titles hang off its title, so it needs a title to have them, and when its last track leaves it, its title goes, and they go with it (CASCADE).
 - **Links:** an artist, label, format, medium or file appears at most once per release or track. An artist appears once per credit line, and two artists on a line can't share a `position`. `position >= 0`.
 - **Credited names:** see [Credited names](#credited-names).
 - **Tag values**, on releases and tracks alike:
@@ -154,8 +159,9 @@ Foreign keys decide what a delete does.
   - a label on a release;
   - a format, medium or tag definition in use (a tag is in use on a release or a track).
 - **CASCADE:** deleting a row also deletes the link rows that describe it:
-  - a release: its artists, labels, formats, media, credit lines, disc titles, file links and tag values;
-  - a track: its artists, credit lines, file links and tag values;
+  - a release: its artists, labels, formats, media, credit lines, disc titles, alternate titles, file links and tag values;
+  - a track: its artists, credit lines, alternate titles, file links and tag values;
+  - a disc title: its alternate titles;
   - a credit line: its artists;
   - an artist: its alternate names and file links;
   - a label: its alternate names.
@@ -172,6 +178,6 @@ The baseline migration adds these rows. Nothing depends on them, so the user can
 - A tag name used by another type ("Score" as both a text and a real number tag) is allowed by the database. The app refuses it, ignoring case.
 - Paths are only checked to be non-empty and relative. Normalizing them (forward slashes, no `./` or `a/../b`) is up to the app.
 - `updated_at` isn't updated automatically.
-- An alternate name can't be the same as its artist's or label's main name, except an artist's real name.
+- An alternate name can't be the same as its artist's or label's main name, except an artist's real name. An alternate title can't be the same as its main title.
 - Text is in Unicode NFC. SQLite can't normalize it, so the app does it before saving.
 - A language tag's canonical form, beyond its shape.

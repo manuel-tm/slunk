@@ -49,6 +49,12 @@ const ReleasesQuery = graphql(`
       items {
         id
         title
+        titleLanguage
+        alternateTitles {
+          title
+          language
+          printed
+        }
         released
         catalogNumber
         variousArtists
@@ -247,6 +253,7 @@ export function ReleaseList() {
       )}
       <ReleaseTable
         releases={data?.releases.items ?? []}
+        q={list.q}
         columns={[
           "id",
           "cover",

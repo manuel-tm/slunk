@@ -121,6 +121,7 @@ export async function seed(db: Kysely<DB>): Promise<void> {
   const virmalised = await insertRelease(db, {
     release: {
       title: "virmalised",
+      title_language: "et",
       release_date: Date.UTC(2024, 0, 1) / 1000,
       release_date_precision: "year",
     },
@@ -141,9 +142,10 @@ export async function seed(db: Kysely<DB>): Promise<void> {
     })
     .where("release_id", "=", virmalised)
     .execute()
-  await insertRelease(db, {
+  const scenery = await insertRelease(db, {
     release: {
       title: "Scenery",
+      title_language: "en",
       release_date: Date.UTC(1976, 0, 1) / 1000,
       release_date_precision: "year",
       catalog_number: "PA-7148",
@@ -153,6 +155,27 @@ export async function seed(db: Kysely<DB>): Promise<void> {
     formats: [format["LP"], format["Album"]],
     media: [medium["Vinyl"]],
   })
+  // Alternate titles (3_alternate_names.md §4.1): printed on "Scenery", and a
+  // translation added in Slunk for "virmalised"
+  await db
+    .insertInto("release_alternate_titles")
+    .values([
+      {
+        release_id: scenery,
+        title: "シーナリィ",
+        language: "ja",
+        printed: 1,
+        position: 0,
+      },
+      {
+        release_id: virmalised,
+        title: "Northern Lights",
+        language: "en",
+        printed: 0,
+        position: 0,
+      },
+    ])
+    .execute()
 
   await db
     .insertInto("release_text_tags")

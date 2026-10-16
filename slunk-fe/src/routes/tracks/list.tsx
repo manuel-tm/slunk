@@ -13,6 +13,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { ListedAlternateTitle, Title } from "@/components/titles"
 import { graphql } from "@/gql"
 import { TagFilters } from "@/components/tag-filters"
 import { useListParams } from "@/hooks/use-list-params"
@@ -49,6 +50,12 @@ const TracksQuery = graphql(`
       items {
         id
         title
+        titleLanguage
+        alternateTitles {
+          title
+          language
+          printed
+        }
         durationMs
         cdNumber
         trackNumber
@@ -57,6 +64,7 @@ const TracksQuery = graphql(`
         release {
           id
           title
+          titleLanguage
         }
         performers {
           artist {
@@ -164,8 +172,18 @@ export function TrackList() {
               <TableCell className="tabular-nums">{track.id}</TableCell>
               <TableCell className="min-w-40 whitespace-normal">
                 <Link to={`/tracks/${track.id}`} className="hover:underline">
-                  {track.title}
+                  <Title
+                    title={track.title}
+                    language={
+                      track.titleLanguage ?? track.release.titleLanguage
+                    }
+                  />
                 </Link>
+                <ListedAlternateTitle
+                  main={track.title}
+                  titles={track.alternateTitles}
+                  q={list.q}
+                />
               </TableCell>
               <TableCell className="text-right tabular-nums">
                 {formatDuration(track.durationMs)}
@@ -181,7 +199,10 @@ export function TrackList() {
                   to={`/releases/${track.release.id}`}
                   className="hover:underline"
                 >
-                  {track.release.title}
+                  <Title
+                    title={track.release.title}
+                    language={track.release.titleLanguage}
+                  />
                 </Link>
               </TableCell>
               <TableCell className="whitespace-normal">

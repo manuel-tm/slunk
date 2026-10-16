@@ -9,6 +9,7 @@ import { PageHeader } from "@/components/page-header"
 import { QueryError } from "@/components/query-error"
 import { TagValues } from "@/components/tag-values"
 import { Skeleton } from "@/components/ui/skeleton"
+import { AlternateTitleLines, Title } from "@/components/titles"
 import { graphql } from "@/gql"
 import { formatDuration } from "@/lib/format"
 import { NotFound } from "@/routes/not-found"
@@ -18,18 +19,29 @@ const TrackQuery = graphql(`
     track(id: $id) {
       id
       title
+      titleLanguage
+      alternateTitles {
+        title
+        language
+        printed
+      }
       durationMs
       cdNumber
       trackNumber
       release {
         id
         title
+        titleLanguage
       }
       performers {
         artist {
           id
           name
           nameLanguage
+          alternateNames {
+            name
+            language
+          }
         }
         creditedAs {
           name
@@ -110,7 +122,10 @@ export function TrackRead() {
       <PageHeader
         crumbs={[
           { label: "Tracks", to: "/tracks" },
-          { label: track ? `${track.title} (${track.id})` : id },
+          {
+            label: track ? `${track.title} (${track.id})` : id,
+            lang: track?.titleLanguage ?? track?.release.titleLanguage,
+          },
         ]}
       >
         {track && (
@@ -137,8 +152,17 @@ export function TrackRead() {
           <>
             <div>
               <h1 className="font-heading text-2xl font-semibold">
-                {track.title}
+                <Title
+                  title={track.title}
+                  language={track.titleLanguage ?? track.release.titleLanguage}
+                />
               </h1>
+              {/* A line per alternate title, with the performers in its language */}
+              <AlternateTitleLines
+                titles={track.alternateTitles}
+                artists={track.performers}
+                className="font-heading text-base"
+              />
               <p>
                 {track.performers.length > 0 && (
                   <>
@@ -160,7 +184,10 @@ export function TrackRead() {
                   to={`/releases/${track.release.id}`}
                   className="hover:underline"
                 >
-                  {track.release.title}
+                  <Title
+                    title={track.release.title}
+                    language={track.release.titleLanguage}
+                  />
                 </Link>
                 , disc {track.cdNumber}, track {track.trackNumber}
               </dd>

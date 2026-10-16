@@ -12,7 +12,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { ListedAlternateTitle, Title } from "@/components/titles"
 import type { CreditedLink } from "@/lib/credited"
+import type { AlternateTitle } from "@/lib/titles"
 import { formatDateTime, formatReleased } from "@/lib/format"
 
 type Named = { id: string; name: string }
@@ -21,6 +23,8 @@ type Named = { id: string; name: string }
 export type ReleaseRow = {
   id: string
   title: string
+  titleLanguage?: string | null
+  alternateTitles?: AlternateTitle[]
   released?: string | null
   catalogNumber?: string | null
   variousArtists?: boolean
@@ -78,6 +82,8 @@ export type Selection = {
  * checkbox, and the header one selects the page. Artists show as credited
  * (3_alternate_names.md §7.1), so on an artist page the title cell says when
  * a release credits the artist under another name: "ALIKA – virmalised".
+ * Under each title is an alternate title, the one `q` matched or the first
+ * (3_alternate_names.md §7.4).
  */
 export function ReleaseTable({
   releases,
@@ -86,6 +92,7 @@ export function ReleaseTable({
   onSort,
   withArtists = false,
   selection,
+  q,
 }: {
   releases: ReleaseRow[]
   columns: ReleaseColumn[]
@@ -93,6 +100,8 @@ export function ReleaseTable({
   onSort?: (sort: string | null) => void
   withArtists?: boolean
   selection?: Selection
+  /** The list's search, which picks the alternate title a row shows */
+  q?: string | null
 }) {
   const names = (items: Named[] | undefined) =>
     items?.map((i) => i.name).join(", ")
@@ -171,8 +180,18 @@ export function ReleaseTable({
                       to={`/releases/${release.id}`}
                       className="font-medium hover:underline"
                     >
-                      {release.title}
+                      <Title
+                        title={release.title}
+                        language={release.titleLanguage}
+                      />
                     </Link>
+                    {release.alternateTitles && (
+                      <ListedAlternateTitle
+                        main={release.title}
+                        titles={release.alternateTitles}
+                        q={q}
+                      />
+                    )}
                   </>
                 )}
                 {column === "artists" && release.artists && (

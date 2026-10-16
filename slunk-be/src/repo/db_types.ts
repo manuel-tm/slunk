@@ -136,6 +136,15 @@ export interface RealNumberTags {
   name: string;
 }
 
+export interface ReleaseAlternateTitles {
+  id: Generated<number>;
+  language: string | null;
+  position: number;
+  printed: Generated<number>;
+  release_id: number;
+  title: string;
+}
+
 export interface ReleaseCredits {
   id: Generated<number>;
   position: number;
@@ -150,9 +159,19 @@ export interface ReleaseDateTags {
   value: number;
 }
 
+export interface ReleaseDiscAlternateTitles {
+  disc_title_id: number;
+  id: Generated<number>;
+  language: string | null;
+  position: number;
+  printed: Generated<number>;
+  title: string;
+}
+
 export interface ReleaseDiscTitles {
   cd_number: number;
   id: Generated<number>;
+  language: string | null;
   release_id: number;
   title: string;
 }
@@ -194,6 +213,7 @@ export interface Releases {
   release_date: number | null;
   release_date_precision: "year" | "month" | "day" | null;
   title: string;
+  title_language: string | null;
   updated_at: Generated<number>;
   various_artists: Generated<number>;
 }
@@ -209,6 +229,15 @@ export interface TextTags {
   id: Generated<number>;
   multiple: Generated<number>;
   name: string;
+}
+
+export interface TrackAlternateTitles {
+  id: Generated<number>;
+  language: string | null;
+  position: number;
+  printed: Generated<number>;
+  title: string;
+  track_id: number;
 }
 
 export interface TrackCredits {
@@ -240,6 +269,7 @@ export interface Tracks {
   inserted_at: Generated<number>;
   release_id: number;
   title: string;
+  title_language: string | null;
   track_number: number;
   updated_at: Generated<number>;
 }
@@ -268,8 +298,10 @@ export interface DB {
   labels_releases: LabelsReleases;
   migrations: Migrations;
   real_number_tags: RealNumberTags;
+  release_alternate_titles: ReleaseAlternateTitles;
   release_credits: ReleaseCredits;
   release_date_tags: ReleaseDateTags;
+  release_disc_alternate_titles: ReleaseDiscAlternateTitles;
   release_disc_titles: ReleaseDiscTitles;
   release_formats: ReleaseFormats;
   release_formats_releases: ReleaseFormatsReleases;
@@ -279,6 +311,7 @@ export interface DB {
   release_text_tags: ReleaseTextTags;
   releases: Releases;
   text_tags: TextTags;
+  track_alternate_titles: TrackAlternateTitles;
   track_credits: TrackCredits;
   track_date_tags: TrackDateTags;
   track_real_number_tags: TrackRealNumberTags;

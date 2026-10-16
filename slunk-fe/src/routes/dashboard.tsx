@@ -16,6 +16,7 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Title } from "@/components/titles"
 import { graphql } from "@/gql"
 import { formatDuration } from "@/lib/format"
 
@@ -40,6 +41,7 @@ const DashboardQuery = graphql(`
       items {
         id
         title
+        titleLanguage
         cover {
           id
         }
@@ -175,7 +177,10 @@ export function Dashboard() {
                           to={`/releases/${release.id}`}
                           className="font-medium hover:underline"
                         >
-                          {release.title}
+                          <Title
+                            title={release.title}
+                            language={release.titleLanguage}
+                          />
                         </Link>
                         <span className="text-muted-foreground">
                           <Names items={release.artists} to={artistUrl} />

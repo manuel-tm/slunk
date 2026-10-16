@@ -38,6 +38,8 @@ export function createLoaders({
     format: list("release_formats"),
     medium: list("release_media"),
     releaseArtists: grouped(catalog.releaseArtistsOf),
+    releaseTitles: grouped(catalog.releaseTitlesOf),
+    trackTitles: grouped(catalog.trackTitlesOf),
     releaseLabels: grouped((ids) => catalog.releaseLinksOf("labels", ids)),
     releaseFormats: grouped((ids) => catalog.releaseLinksOf("formats", ids)),
     releaseMedia: grouped((ids) => catalog.releaseLinksOf("media", ids)),

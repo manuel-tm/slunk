@@ -18,6 +18,7 @@ export const apollo = new ApolloClient({
   cache: new InMemoryCache({
     typePolicies: {
       Release: replaced(
+        "alternateTitles",
         "artists",
         "labels",
         "formats",
@@ -28,7 +29,14 @@ export const apollo = new ApolloClient({
         "files",
         "tags"
       ),
-      Track: replaced("artists", "features", "performers", "credits", "files"),
+      Track: replaced(
+        "alternateTitles",
+        "artists",
+        "features",
+        "performers",
+        "credits",
+        "files"
+      ),
       Artist: replaced(
         "alternateNames",
         "files",

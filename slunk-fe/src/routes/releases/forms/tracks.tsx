@@ -2,6 +2,13 @@ import { useMutation, useQuery } from "@apollo/client/react"
 import { XIcon } from "lucide-react"
 import { Fragment, useState } from "react"
 
+import {
+  type AlternateTitleRow,
+  alternateTitleRow,
+  alternateTitlesInput,
+  alternateTitlesValid,
+  TitlesPopover,
+} from "@/components/alternate-titles-editor"
 import { ChipList } from "@/components/chip-list"
 import type { Option } from "@/components/picker"
 import { ArtistPicker, FilePicker } from "@/components/pickers"
@@ -23,6 +30,7 @@ import { graphql } from "@/gql"
 import type { ReleaseTracksFormQuery } from "@/gql/graphql"
 import { creditedInput, creditedOption } from "@/lib/credited"
 import { formatDuration } from "@/lib/format"
+import { textProps } from "@/lib/languages"
 
 const ReleaseTracksFormQueryDocument = graphql(`
   query ReleaseTracksForm($id: ID!, $folder: String!, $withFolder: Boolean!) {
@@ -42,12 +50,24 @@ const ReleaseTracksFormQueryDocument = graphql(`
       discTitles {
         cdNumber
         title
+        language
+        alternateTitles {
+          title
+          language
+          printed
+        }
       }
       tracks {
         id
         cdNumber
         trackNumber
         title
+        titleLanguage
+        alternateTitles {
+          title
+          language
+          printed
+        }
         durationMs
         file {
           id
@@ -137,6 +157,9 @@ type TrackRow = {
   cdNumber: number
   trackNumber: number | ""
   title: string
+  /** Null: the release's */
+  titleLanguage: string | null
+  alternateTitles: AlternateTitleRow[]
   artists: Option[]
   features: Option[]
   durationMs: number | null
@@ -162,6 +185,8 @@ function initialRows(
     cdNumber: track.cdNumber,
     trackNumber: track.trackNumber,
     title: track.title,
+    titleLanguage: track.titleLanguage,
+    alternateTitles: track.alternateTitles.map(alternateTitleRow),
     artists: track.artists.map(creditedOption),
     features: track.features.map(creditedOption),
     durationMs: track.durationMs,
@@ -188,6 +213,8 @@ function initialRows(
       cdNumber: suggestion.cdNumber,
       trackNumber: suggestion.trackNumber,
       title: suggestion.title,
+      titleLanguage: null,
+      alternateTitles: [],
       artists: suggestion.artists.flatMap((a) =>
         a.artist && !releaseArtists.has(a.artist.id) ? [a.artist] : []
       ),
@@ -208,15 +235,35 @@ function initialRows(
   )
 }
 
+/** A disc's title, its language, and its alternate titles. */
+type DiscTitleValues = {
+  title: string
+  /** Null: the release's */
+  language: string | null
+  alternateTitles: AlternateTitleRow[]
+}
+
+const NO_DISC_TITLE: DiscTitleValues = {
+  title: "",
+  language: null,
+  alternateTitles: [],
+}
+
 /** Titles by disc number: the release's, and else the folder's tags. */
-function initialTitles(data: ReleaseTracksFormQuery): Record<number, string> {
-  const titles: Record<number, string> = {}
-  for (const { cdNumber, title } of data.release?.discTitles ?? []) {
-    titles[cdNumber] = title
+function initialTitles(
+  data: ReleaseTracksFormQuery
+): Record<number, DiscTitleValues> {
+  const titles: Record<number, DiscTitleValues> = {}
+  for (const disc of data.release?.discTitles ?? []) {
+    titles[disc.cdNumber] = {
+      title: disc.title,
+      language: disc.language,
+      alternateTitles: disc.alternateTitles.map(alternateTitleRow),
+    }
   }
   for (const { cdNumber, discTitle } of data.trackSuggestions ?? []) {
     if (discTitle && titles[cdNumber] === undefined) {
-      titles[cdNumber] = discTitle
+      titles[cdNumber] = { ...NO_DISC_TITLE, title: discTitle }
     }
   }
   return titles
@@ -274,7 +321,7 @@ function Rows({
   releaseId: string
   variousArtists: boolean
   initial: TrackRow[]
-  initialTitles: Record<number, string>
+  initialTitles: Record<number, DiscTitleValues>
   submitLabel: string
   onSaved: () => void
 }) {
@@ -308,13 +355,21 @@ function Rows({
                 cdNumber: row.cdNumber,
                 trackNumber: Number(row.trackNumber),
                 title: row.title,
+                titleLanguage: row.titleLanguage,
+                alternateTitles: alternateTitlesInput(row.alternateTitles),
                 artists: creditedInput(row.artists),
                 features: creditedInput(row.features),
               })),
-              discTitles: discs.map((disc) => ({
-                cdNumber: disc,
-                title: titles[disc] ?? "",
-              })),
+              discTitles: discs.map((disc) => {
+                const { title, language, alternateTitles } =
+                  titles[disc] ?? NO_DISC_TITLE
+                return {
+                  cdNumber: disc,
+                  title,
+                  language,
+                  alternateTitles: alternateTitlesInput(alternateTitles),
+                }
+              }),
             },
           })
           onSaved()
@@ -332,23 +387,37 @@ function Rows({
       {discs.length > 0 && (
         <fieldset className="flex max-w-2xl flex-col gap-2">
           <legend className="mb-2 font-medium">Disc titles</legend>
-          <div className="grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-2">
-            {discs.map((disc) => (
-              <Fragment key={disc}>
-                <Label htmlFor={`disc-title-${disc}`}>Disc {disc}</Label>
-                <Input
-                  id={`disc-title-${disc}`}
-                  placeholder="No title"
-                  value={titles[disc] ?? ""}
-                  onChange={(e) =>
-                    setTitles((current) => ({
-                      ...current,
-                      [disc]: e.target.value,
-                    }))
-                  }
-                />
-              </Fragment>
-            ))}
+          <div className="grid grid-cols-[auto_1fr_auto] items-center gap-x-3 gap-y-2">
+            {discs.map((disc) => {
+              const values = titles[disc] ?? NO_DISC_TITLE
+              const set = (changes: Partial<DiscTitleValues>) =>
+                setTitles((current) => ({
+                  ...current,
+                  [disc]: { ...(current[disc] ?? NO_DISC_TITLE), ...changes },
+                }))
+              return (
+                <Fragment key={disc}>
+                  <Label htmlFor={`disc-title-${disc}`}>Disc {disc}</Label>
+                  <Input
+                    id={`disc-title-${disc}`}
+                    placeholder="No title"
+                    value={values.title}
+                    {...textProps(values.language)}
+                    onChange={(e) => set({ title: e.target.value })}
+                  />
+                  {/* Alternate titles belong to the disc's title */}
+                  <TitlesPopover
+                    main={values.title}
+                    language={values.language}
+                    titles={values.alternateTitles}
+                    disabled={!values.title.trim()}
+                    onChange={(language, alternateTitles) =>
+                      set({ language, alternateTitles })
+                    }
+                  />
+                </Fragment>
+              )
+            })}
           </div>
         </fieldset>
       )}
@@ -434,14 +503,26 @@ function Rows({
                   />
                 </TableCell>
                 <TableCell className="align-top">
-                  <Input
-                    aria-label="Title"
-                    required={row.include}
-                    className="min-w-48"
-                    disabled={off}
-                    value={row.title}
-                    onChange={(e) => edit(row.key, { title: e.target.value })}
-                  />
+                  <div className="flex items-center gap-1">
+                    <Input
+                      aria-label="Title"
+                      required={row.include}
+                      className="min-w-48"
+                      disabled={off}
+                      value={row.title}
+                      {...textProps(row.titleLanguage)}
+                      onChange={(e) => edit(row.key, { title: e.target.value })}
+                    />
+                    <TitlesPopover
+                      main={row.title}
+                      language={row.titleLanguage}
+                      titles={row.alternateTitles}
+                      disabled={off}
+                      onChange={(titleLanguage, alternateTitles) =>
+                        edit(row.key, { titleLanguage, alternateTitles })
+                      }
+                    />
+                  </div>
                 </TableCell>
                 <TableCell className="align-top">
                   <ChipList
@@ -506,6 +587,8 @@ function Rows({
                   title: name
                     .replace(/\.[^.]+$/, "")
                     .replace(/^\d+[\s._-]+/, ""),
+                  titleLanguage: null,
+                  alternateTitles: [],
                   artists: [],
                   features: [],
                   durationMs: null,
@@ -517,7 +600,22 @@ function Rows({
             }}
           />
         </div>
-        <Button type="submit" disabled={loading} className="ml-auto">
+        <Button
+          type="submit"
+          disabled={
+            loading ||
+            !included.every((row) =>
+              alternateTitlesValid(row.title, row.alternateTitles)
+            ) ||
+            !discs.every((disc) =>
+              alternateTitlesValid(
+                titles[disc]?.title ?? "",
+                titles[disc]?.alternateTitles ?? []
+              )
+            )
+          }
+          className="ml-auto"
+        >
           {submitLabel}
         </Button>
       </div>

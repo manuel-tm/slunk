@@ -11,6 +11,7 @@ import { artistUrl, labelUrl, Names } from "@/components/names"
 import { PageHeader } from "@/components/page-header"
 import { QueryError } from "@/components/query-error"
 import { TagValues } from "@/components/tag-values"
+import { AlternateTitleLines, Title } from "@/components/titles"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { graphql } from "@/gql"
@@ -23,6 +24,12 @@ const ReleaseQueryDocument = graphql(`
     release(id: $id) {
       id
       title
+      titleLanguage
+      alternateTitles {
+        title
+        language
+        printed
+      }
       released
       catalogNumber
       variousArtists
@@ -37,6 +44,10 @@ const ReleaseQueryDocument = graphql(`
           id
           name
           nameLanguage
+          alternateNames {
+            name
+            language
+          }
         }
         creditedAs {
           name
@@ -81,10 +92,22 @@ const ReleaseQueryDocument = graphql(`
       discTitles {
         cdNumber
         title
+        language
+        alternateTitles {
+          title
+          language
+          printed
+        }
       }
       tracks {
         id
         title
+        titleLanguage
+        alternateTitles {
+          title
+          language
+          printed
+        }
         durationMs
         cdNumber
         trackNumber
@@ -97,6 +120,10 @@ const ReleaseQueryDocument = graphql(`
             id
             name
             nameLanguage
+            alternateNames {
+              name
+              language
+            }
           }
           creditedAs {
             name
@@ -153,15 +180,29 @@ const DeleteRelease = graphql(`
 
 type Release = NonNullable<ReleaseQuery["release"]>
 
-// The browser remembers whether credits are hidden (design §7.6)
+// The browser remembers whether credits (design §7.6) and alternate titles
+// (3_alternate_names.md §7.3) are hidden
 const HIDE_CREDITS = "slunk.release.hideCredits"
+const HIDE_TITLES = "slunk.release.hideAlternateTitles"
 
-function readHideCredits() {
-  try {
-    return localStorage.getItem(HIDE_CREDITS) === "1"
-  } catch {
-    return false
+/** A switch the browser remembers, under `key`. */
+function useRemembered(key: string) {
+  const [on, setOn] = useState(() => {
+    try {
+      return localStorage.getItem(key) === "1"
+    } catch {
+      return false
+    }
+  })
+  function toggle() {
+    setOn(!on)
+    try {
+      localStorage.setItem(key, on ? "0" : "1")
+    } catch {
+      // Remembering is a convenience
+    }
   }
+  return [on, toggle] as const
 }
 
 /** `/releases/:id`, laid out like a Discogs release page (design §7.6). */
@@ -178,7 +219,10 @@ export function ReleasePage() {
       <PageHeader
         crumbs={[
           { label: "Releases", to: "/releases" },
-          { label: release ? `${release.title} (${release.id})` : id },
+          {
+            label: release ? `${release.title} (${release.id})` : id,
+            lang: release?.titleLanguage,
+          },
         ]}
       >
         {release && (
@@ -274,14 +318,22 @@ function Heading({ release }: { release: Release }) {
         </Link>
       </div>
       <div className="flex flex-col gap-3">
-        <h1 className="font-heading text-2xl font-semibold">
-          {release.artists.length > 0 && (
-            <>
-              <Names items={release.artists} to={artistUrl} /> –{" "}
-            </>
-          )}
-          {release.title}
-        </h1>
+        <div className="flex flex-col gap-1">
+          <h1 className="font-heading text-2xl font-semibold">
+            {release.artists.length > 0 && (
+              <>
+                <Names items={release.artists} to={artistUrl} /> –{" "}
+              </>
+            )}
+            <Title title={release.title} language={release.titleLanguage} />
+          </h1>
+          {/* A line per alternate title, with the artists in its language */}
+          <AlternateTitleLines
+            titles={release.alternateTitles}
+            artists={release.artists}
+            className="font-heading text-base"
+          />
+        </div>
         <dl className="grid grid-cols-[minmax(5rem,auto)_1fr] gap-x-2 gap-y-1">
           {facts
             .filter(([, value]) => value)
@@ -303,23 +355,19 @@ function Heading({ release }: { release: Release }) {
  * track's artists; a regular release only shows features.
  */
 function Tracklist({ release }: { release: Release }) {
-  const [hideCredits, setHideCredits] = useState(readHideCredits)
+  const [hideCredits, toggleCredits] = useRemembered(HIDE_CREDITS)
+  const [hideTitles, toggleTitles] = useRemembered(HIDE_TITLES)
   const [playing, setPlaying] = useState<string | null>(null)
   const audio = useRef<HTMLAudioElement>(null)
   const discs = [...new Set(release.tracks.map((track) => track.cdNumber))]
   const titles = new Map(
-    release.discTitles.map(({ cdNumber, title }) => [cdNumber, title])
+    release.discTitles.map((disc) => [disc.cdNumber, disc])
   )
-
-  function toggleCredits() {
-    const next = !hideCredits
-    setHideCredits(next)
-    try {
-      localStorage.setItem(HIDE_CREDITS, next ? "1" : "0")
-    } catch {
-      // Remembering is a convenience
-    }
-  }
+  // Tracks and discs without their own language take the release's
+  const language = release.titleLanguage
+  const hasAlternateTitles =
+    release.tracks.some((track) => track.alternateTitles.length > 0) ||
+    release.discTitles.some((disc) => disc.alternateTitles.length > 0)
 
   function play(track: Release["tracks"][number]) {
     const element = audio.current
@@ -338,11 +386,18 @@ function Tracklist({ release }: { release: Release }) {
     <section className="flex flex-col gap-2">
       <div className="flex items-center justify-between">
         <h2 className="font-heading text-base font-semibold">Tracklist</h2>
-        {release.tracks.some((track) => track.credits.length > 0) && (
-          <Button variant="ghost" size="sm" onClick={toggleCredits}>
-            {hideCredits ? "Show credits" : "Hide credits"}
-          </Button>
-        )}
+        <div className="flex">
+          {hasAlternateTitles && (
+            <Button variant="ghost" size="sm" onClick={toggleTitles}>
+              {hideTitles ? "Show alternate titles" : "Hide alternate titles"}
+            </Button>
+          )}
+          {release.tracks.some((track) => track.credits.length > 0) && (
+            <Button variant="ghost" size="sm" onClick={toggleCredits}>
+              {hideCredits ? "Show credits" : "Hide credits"}
+            </Button>
+          )}
+        </div>
       </div>
       <audio ref={audio} onEnded={() => setPlaying(null)} className="hidden" />
       {release.tracks.length === 0 && (
@@ -356,7 +411,20 @@ function Tracklist({ release }: { release: Release }) {
             <h3 className="border-b py-1 font-medium text-muted-foreground">
               CD {disc}
               {titles.has(disc) && (
-                <span className="text-foreground"> · {titles.get(disc)}</span>
+                <>
+                  {" · "}
+                  <Title
+                    title={titles.get(disc)!.title}
+                    language={titles.get(disc)!.language ?? language}
+                    className="text-foreground"
+                  />
+                  {!hideTitles && (
+                    <AlternateTitleLines
+                      titles={titles.get(disc)!.alternateTitles}
+                      className="font-normal"
+                    />
+                  )}
+                </>
               )}
             </h3>
           )}
@@ -381,7 +449,10 @@ function Tracklist({ release }: { release: Release }) {
                       to={`/tracks/${track.id}`}
                       className="hover:underline"
                     >
-                      {track.title}
+                      <Title
+                        title={track.title}
+                        language={track.titleLanguage ?? language}
+                      />
                     </Link>
                     {track.features.length > 0 && (
                       <>
@@ -390,6 +461,17 @@ function Tracklist({ release }: { release: Release }) {
                       </>
                     )}
                   </span>
+                  {!hideTitles && (
+                    <AlternateTitleLines
+                      titles={track.alternateTitles}
+                      // Where the row names the track's artists (§7.2)
+                      artists={
+                        release.variousArtists && track.artists.length > 0
+                          ? track.artists
+                          : undefined
+                      }
+                    />
+                  )}
                   {!hideCredits && track.credits.length > 0 && (
                     <div className="pl-4">
                       <CreditLines credits={track.credits} />

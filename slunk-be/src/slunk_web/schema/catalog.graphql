@@ -31,7 +31,7 @@ extend type Query {
     artist: ID
     tags: [TagFilterInput!]! = []
   ): [ID!]!
-  "Releases with this title, ignoring case: an import checks it so a release isn't imported twice."
+  "Releases with this title, or this alternate title, ignoring case: an import checks it so a release isn't imported twice."
   releasesTitled(title: String!): [Release!]!
   tracks(
     page: Int! = 1
@@ -202,7 +202,12 @@ type Label {
 
 type Release {
   id: ID!
+  "The main title"
   title: String!
+  "The main title's language, and its discs' and tracks' unless they have their own: a BCP 47 tag. Null when it isn't known."
+  titleLanguage: String
+  "Its other titles, in order: printed in another script or language, or added in Slunk, like a translation."
+  alternateTitles: [AlternateTitle!]!
   "With only its known parts: `2006`, `2006-01` or `2006-01-10`."
   released: String
   catalogNumber: String
@@ -232,6 +237,10 @@ type Release {
 type Track {
   id: ID!
   title: String!
+  "The title's language. Null: the release's."
+  titleLanguage: String
+  "Its other titles, in order."
+  alternateTitles: [AlternateTitle!]!
   "Read from the audio file. Null when it can't be read."
   durationMs: Float
   trackNumber: Int!
@@ -255,6 +264,18 @@ type Track {
 type DiscTitle {
   cdNumber: Int!
   title: String!
+  "Null: the release's title language"
+  language: String
+  alternateTitles: [AlternateTitle!]!
+}
+
+"A title besides the main one (3_alternate_names.md §4.2). It has no id: it's part of its release, track or disc."
+type AlternateTitle {
+  title: String!
+  "A BCP 47 tag. Null when it isn't known."
+  language: String
+  "On the release as published. False for a title added in Slunk, like a translation."
+  printed: Boolean!
 }
 
 "A credit line: a role, as printed, and the artists who hold it, in order. It has no id: release and track credits live in different tables, so their ids would collide."
@@ -424,6 +445,10 @@ input LabelNameInput {
 
 input ReleaseInput {
   title: String!
+  "Left out, it stays as it is"
+  titleLanguage: String
+  "Replaces the alternate titles, in order. Left out, they stay as they are, except one that's now the main title."
+  alternateTitles: [AlternateTitleInput!]
   "`2006`, `2006-01` or `2006-01-10`, which also sets the precision"
   released: String
   catalogNumber: String
@@ -443,14 +468,29 @@ input ReleaseTrackInput {
   cdNumber: Int! = 1
   trackNumber: Int!
   title: String!
+  "Left out, it stays as it is. Blank: the release's title language."
+  titleLanguage: String
+  "Replaces the alternate titles, in order. Left out, they stay as they are, except one that's now the main title."
+  alternateTitles: [AlternateTitleInput!]
   artists: [CreditedArtistInput!]! = []
   features: [CreditedArtistInput!]! = []
 }
 
 input DiscTitleInput {
   cdNumber: Int!
-  "Trimmed. Blank means no title."
+  "Trimmed. Blank means no title, and then it can't have alternate titles."
   title: String!
+  "Blank: the release's title language"
+  language: String
+  alternateTitles: [AlternateTitleInput!]! = []
+}
+
+"An alternate title. Trimmed, and a blank one is left out. None can be given twice, or be the main title: they compare exactly, case included."
+input AlternateTitleInput {
+  title: String!
+  "A BCP 47 tag, stored in canonical form. Blank means unknown."
+  language: String
+  printed: Boolean! = true
 }
 
 input ReleaseFilesInput {
@@ -481,6 +521,10 @@ input TrackInput {
   cdNumber: Int! = 1
   trackNumber: Int!
   title: String!
+  "Left out, it stays as it is. Blank: the release's title language."
+  titleLanguage: String
+  "Replaces the alternate titles, in order. Left out, they stay as they are, except one that's now the main title."
+  alternateTitles: [AlternateTitleInput!]
   artists: [CreditedArtistInput!]! = []
   features: [CreditedArtistInput!]! = []
   credits: [CreditInput!]! = []

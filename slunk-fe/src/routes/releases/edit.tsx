@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/page-header"
 import { QueryError } from "@/components/query-error"
 import { TabLinks } from "@/components/tab-links"
 import { Skeleton } from "@/components/ui/skeleton"
+import { alternateTitleRow } from "@/components/alternate-titles-editor"
 import { graphql } from "@/gql"
 import { creditedOption } from "@/lib/credited"
 import { NotFound } from "@/routes/not-found"
@@ -32,6 +33,12 @@ const ReleaseDetailsQuery = graphql(`
     release(id: $id) {
       id
       title
+      titleLanguage
+      alternateTitles {
+        title
+        language
+        printed
+      }
       released
       variousArtists
       catalogNumber
@@ -142,6 +149,8 @@ export function DetailsTab({
       submitLabel={submitLabel}
       initial={{
         title: release.title,
+        titleLanguage: release.titleLanguage,
+        alternateTitles: release.alternateTitles.map(alternateTitleRow),
         released: release.released ?? "",
         variousArtists: release.variousArtists,
         catalogNumber: release.catalogNumber ?? "",

@@ -13,8 +13,13 @@ import type {
   ReleasesRepository,
   ReleaseValues,
 } from "../slunk/catalog/repository.ts"
+import {
+  alternateTitlesOf,
+  setAlternateTitles,
+  titleMatches,
+} from "./alternate_titles.ts"
 import type { DB, Releases } from "./db_types.ts"
-import { chunks, contains, groupBy } from "./helpers.ts"
+import { chunks, groupBy } from "./helpers.ts"
 import { tagMatches } from "./tags_repository.ts"
 
 /** Each link's table, its column, and how its rows are ordered. */
@@ -37,7 +42,9 @@ export function createReleasesRepository(db: Kysely<DB>): ReleasesRepository {
   /** The releases that match a list's search and filters. */
   function filtered(query: ReleaseFilters) {
     let select = db.selectFrom("releases")
-    if (query.search) select = select.where(contains("title", query.search))
+    if (query.search) {
+      select = select.where(titleMatches("release", query.search))
+    }
     for (const [link, id] of [
       ["formats", query.format],
       ["media", query.medium],
@@ -113,10 +120,20 @@ export function createReleasesRepository(db: Kysely<DB>): ReleasesRepository {
       const rows = await db
         .selectFrom("releases")
         .selectAll()
-        .where(sql`title collate nocase`, "=", title.trim())
+        .where(
+          sql<SqlBool>`title = ${title.trim()} collate nocase or id in (
+            select release_id from release_alternate_titles
+            where title = ${title.trim()} collate nocase
+          )`
+        )
         .execute()
       return rows.map(toRelease)
     },
+
+    alternateTitlesOf: (releaseIds) =>
+      alternateTitlesOf(db, "release", releaseIds),
+    setAlternateTitles: (releaseId, titles) =>
+      setAlternateTitles(db, "release", releaseId, titles),
 
     async insert(values) {
       const row = await db
@@ -221,21 +238,43 @@ export function createReleasesRepository(db: Kysely<DB>): ReleasesRepository {
     },
 
     async discTitlesOf(releaseIds) {
-      const rows: { releaseId: number; cdNumber: number; title: string }[] = []
+      const rows: {
+        id: number
+        releaseId: number
+        cdNumber: number
+        title: string
+        language: string | null
+      }[] = []
       for (const chunk of chunks(releaseIds)) {
         const found = await db
           .selectFrom("release_disc_titles")
-          .select(["release_id as releaseId", "cd_number as cdNumber", "title"])
+          .select([
+            "id",
+            "release_id as releaseId",
+            "cd_number as cdNumber",
+            "title",
+            "language",
+          ])
           .where("release_id", "in", chunk)
           .orderBy("release_id")
           .orderBy("cd_number")
           .execute()
         rows.push(...found)
       }
+      const alternates = await alternateTitlesOf(
+        db,
+        "disc",
+        rows.map((row) => row.id)
+      )
       return groupBy(
         rows,
         (row) => row.releaseId,
-        ({ cdNumber, title }) => ({ cdNumber, title })
+        ({ id, cdNumber, title, language }) => ({
+          cdNumber,
+          title,
+          language,
+          alternateTitles: alternates.get(id) ?? [],
+        })
       )
     },
 
@@ -244,17 +283,20 @@ export function createReleasesRepository(db: Kysely<DB>): ReleasesRepository {
         .deleteFrom("release_disc_titles")
         .where("release_id", "=", releaseId)
         .execute()
-      if (titles.length === 0) return
-      await db
-        .insertInto("release_disc_titles")
-        .values(
-          titles.map(({ cdNumber, title }) => ({
+      // A disc's alternate titles went with its title (CASCADE)
+      for (const { cdNumber, title, language, alternateTitles } of titles) {
+        const { id } = await db
+          .insertInto("release_disc_titles")
+          .values({
             release_id: releaseId,
             cd_number: cdNumber,
             title,
-          }))
-        )
-        .execute()
+            language,
+          })
+          .returning("id")
+          .executeTakeFirstOrThrow()
+        await setAlternateTitles(db, "disc", id, alternateTitles)
+      }
     },
 
     async withoutArtists() {
@@ -294,6 +336,7 @@ function toRelease(row: Selectable<Releases>): Release {
   return {
     id: row.id,
     title: row.title,
+    titleLanguage: row.title_language,
     releaseDate: row.release_date,
     releaseDatePrecision: row.release_date_precision,
     catalogNumber: row.catalog_number,
@@ -309,6 +352,7 @@ function toRow(values: Partial<ReleaseValues>): Updateable<Releases>
 function toRow(values: Partial<ReleaseValues>): Updateable<Releases> {
   return {
     title: values.title,
+    title_language: values.titleLanguage,
     release_date: values.releaseDate,
     release_date_precision: values.releaseDatePrecision,
     catalog_number: values.catalogNumber,

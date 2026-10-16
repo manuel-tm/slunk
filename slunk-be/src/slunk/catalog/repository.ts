@@ -42,7 +42,10 @@ export type AlternateNameValues = Omit<AlternateName, "id"> & {
 
 export type Release = {
   id: number
+  /** The main title (3_alternate_names.md §4.2) */
   title: string
+  /** Its language, and its discs' and tracks' unless they have their own */
+  titleLanguage: string | null
   /** Epoch seconds, midnight UTC */
   releaseDate: number | null
   releaseDatePrecision: DatePrecision | null
@@ -57,6 +60,8 @@ export type Release = {
 export type Track = {
   id: number
   title: string
+  /** Null: the release's title language */
+  titleLanguage: string | null
   durationMs: number | null
   trackNumber: number
   cdNumber: number
@@ -74,8 +79,25 @@ export type ArtistLink = { artistId: number; creditedNameId: number | null }
 
 export type TrackArtist = ArtistLink & { featured: boolean }
 
+/**
+ * A title besides the main one, of a release, a track or a disc
+ * (3_alternate_names.md §4.2). `printed` says it's on the release as
+ * published, rather than added in Slunk, like a translation.
+ */
+export type AlternateTitle = {
+  title: string
+  language: string | null
+  printed: boolean
+}
+
 /** A disc's own title, as printed. Only discs with a title have one. */
-export type DiscTitle = { cdNumber: number; title: string }
+export type DiscTitle = {
+  cdNumber: number
+  title: string
+  /** Null: the release's title language */
+  language: string | null
+  alternateTitles: AlternateTitle[]
+}
 
 /** A credit line: a role as printed, and the artists who hold it, in order. */
 export type Credit = { role: string; artists: ArtistLink[] }
@@ -184,7 +206,7 @@ export interface ReleasesRepository {
   ids(query: ReleaseFilters): Promise<number[]>
   get(id: number): Promise<Release | null>
   getMany(ids: readonly number[]): Promise<Release[]>
-  /** Same title, ignoring case */
+  /** Same title, or alternate title, ignoring case */
   findByTitle(title: string): Promise<Release[]>
   insert(values: ReleaseValues): Promise<Release>
   update(id: number, values: Partial<ReleaseValues>): Promise<Release | null>
@@ -204,7 +226,13 @@ export interface ReleasesRepository {
   artistsOf(releaseIds: readonly number[]): Promise<Map<number, ArtistLink[]>>
   /** Replaces the release's artists; their order is the display order */
   setArtists(releaseId: number, artists: ArtistLink[]): Promise<void>
-  /** Disc titles by release, by disc number */
+  /** Alternate titles by release, in order */
+  alternateTitlesOf(
+    releaseIds: readonly number[]
+  ): Promise<Map<number, AlternateTitle[]>>
+  /** Replaces the release's alternate titles, in order */
+  setAlternateTitles(releaseId: number, titles: AlternateTitle[]): Promise<void>
+  /** Disc titles by release, by disc number, with their alternate titles */
   discTitlesOf(releaseIds: readonly number[]): Promise<Map<number, DiscTitle[]>>
   /** Replaces the disc titles. Each disc needs a track already. */
   setDiscTitles(releaseId: number, titles: DiscTitle[]): Promise<void>
@@ -230,6 +258,12 @@ export interface TracksRepository {
   delete(id: number): Promise<void>
   /** Moves a release's track numbers out of the way, to renumber them */
   shiftNumbers(releaseId: number, by: number): Promise<void>
+  /** Alternate titles by track, in order */
+  alternateTitlesOf(
+    trackIds: readonly number[]
+  ): Promise<Map<number, AlternateTitle[]>>
+  /** Replaces the track's alternate titles, in order */
+  setAlternateTitles(trackId: number, titles: AlternateTitle[]): Promise<void>
   /** Own artists by track, in display order */
   artistsOf(trackIds: readonly number[]): Promise<Map<number, TrackArtist[]>>
   setArtists(trackId: number, artists: TrackArtist[]): Promise<void>
@@ -273,7 +307,7 @@ export interface StatsRepository {
     labels: number
     durationMs: number
   }>
-  /** Language tags in use on names, the most used first */
+  /** Language tags in use on names and titles, the most used first */
   languages(): Promise<string[]>
 }
 

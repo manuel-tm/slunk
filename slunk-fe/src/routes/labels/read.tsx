@@ -36,6 +36,12 @@ const LabelQuery = graphql(`
       items {
         id
         title
+        titleLanguage
+        alternateTitles {
+          title
+          language
+          printed
+        }
         released
         catalogNumber
         cover {

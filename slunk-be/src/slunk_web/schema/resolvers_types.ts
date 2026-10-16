@@ -17,6 +17,24 @@ export type Scalars = {
   Float: { input: number; output: number; }
 };
 
+/** A title besides the main one (3_alternate_names.md §4.2). It has no id: it's part of its release, track or disc. */
+export type AlternateTitle = {
+  __typename?: 'AlternateTitle';
+  /** A BCP 47 tag. Null when it isn't known. */
+  language?: Maybe<Scalars['String']['output']>;
+  /** On the release as published. False for a title added in Slunk, like a translation. */
+  printed: Scalars['Boolean']['output'];
+  title: Scalars['String']['output'];
+};
+
+/** An alternate title. Trimmed, and a blank one is left out. None can be given twice, or be the main title: they compare exactly, case included. */
+export type AlternateTitleInput = {
+  /** A BCP 47 tag, stored in canonical form. Blank means unknown. */
+  language?: InputMaybe<Scalars['String']['input']>;
+  printed: Scalars['Boolean']['input'];
+  title: Scalars['String']['input'];
+};
+
 export type Appearance = {
   __typename?: 'Appearance';
   release: Release;
@@ -198,13 +216,19 @@ export type DateTagMultiValueTracksArgs = {
 /** A disc's own title, as printed: "Live At Madison Square Garden". It has no id: it's part of its release. */
 export type DiscTitle = {
   __typename?: 'DiscTitle';
+  alternateTitles: Array<AlternateTitle>;
   cdNumber: Scalars['Int']['output'];
+  /** Null: the release's title language */
+  language?: Maybe<Scalars['String']['output']>;
   title: Scalars['String']['output'];
 };
 
 export type DiscTitleInput = {
+  alternateTitles: Array<AlternateTitleInput>;
   cdNumber: Scalars['Int']['input'];
-  /** Trimmed. Blank means no title. */
+  /** Blank: the release's title language */
+  language?: InputMaybe<Scalars['String']['input']>;
+  /** Trimmed. Blank means no title, and then it can't have alternate titles. */
   title: Scalars['String']['input'];
 };
 
@@ -731,7 +755,7 @@ export type Query = {
   releaseSuggestion: ReleaseSuggestion;
   /** Releases. The filters combine: `format` and `medium` give "EPs on vinyl". */
   releases: ReleasePage;
-  /** Releases with this title, ignoring case: an import checks it so a release isn't imported twice. */
+  /** Releases with this title, or this alternate title, ignoring case: an import checks it so a release isn't imported twice. */
   releasesTitled: Array<Release>;
   tag?: Maybe<Tag>;
   /** Tag definitions of one type, or of every type when `type` is left out. */
@@ -896,6 +920,8 @@ export type QueryTracksArgs = {
 
 export type Release = {
   __typename?: 'Release';
+  /** Its other titles, in order: printed in another script or language, or added in Slunk, like a translation. */
+  alternateTitles: Array<AlternateTitle>;
   /** Who the release is by, in display order, as credited. */
   artists: Array<CreditedArtist>;
   blockers: Array<Scalars['String']['output']>;
@@ -918,7 +944,10 @@ export type Release = {
   released?: Maybe<Scalars['String']['output']>;
   /** By tag name. */
   tags: Array<TagValues>;
+  /** The main title */
   title: Scalars['String']['output'];
+  /** The main title's language, and its discs' and tracks' unless they have their own: a BCP 47 tag. Null when it isn't known. */
+  titleLanguage?: Maybe<Scalars['String']['output']>;
   /** In order: disc, then number. */
   tracks: Array<Track>;
   updatedAt: Scalars['Float']['output'];
@@ -946,6 +975,8 @@ export type ReleaseFormat = ListItem & {
 };
 
 export type ReleaseInput = {
+  /** Replaces the alternate titles, in order. Left out, they stay as they are, except one that's now the main title. */
+  alternateTitles?: InputMaybe<Array<AlternateTitleInput>>;
   /** In display order, like the other lists. An artist given twice is kept once. */
   artists: Array<CreditedArtistInput>;
   catalogNumber?: InputMaybe<Scalars['String']['input']>;
@@ -955,6 +986,8 @@ export type ReleaseInput = {
   /** `2006`, `2006-01` or `2006-01-10`, which also sets the precision */
   released?: InputMaybe<Scalars['String']['input']>;
   title: Scalars['String']['input'];
+  /** Left out, it stays as it is */
+  titleLanguage?: InputMaybe<Scalars['String']['input']>;
   variousArtists: Scalars['Boolean']['input'];
 };
 
@@ -989,6 +1022,8 @@ export type ReleaseSuggestion = {
 
 /** A track of the release: `id` for one it has, else `fileId` or `path` for a new one. */
 export type ReleaseTrackInput = {
+  /** Replaces the alternate titles, in order. Left out, they stay as they are, except one that's now the main title. */
+  alternateTitles?: InputMaybe<Array<AlternateTitleInput>>;
   artists: Array<CreditedArtistInput>;
   cdNumber: Scalars['Int']['input'];
   features: Array<CreditedArtistInput>;
@@ -996,6 +1031,8 @@ export type ReleaseTrackInput = {
   id?: InputMaybe<Scalars['ID']['input']>;
   path?: InputMaybe<Scalars['String']['input']>;
   title: Scalars['String']['input'];
+  /** Left out, it stays as it is. Blank: the release's title language. */
+  titleLanguage?: InputMaybe<Scalars['String']['input']>;
   trackNumber: Scalars['Int']['input'];
 };
 
@@ -1141,6 +1178,8 @@ export type TextTagValuesArgs = {
 
 export type Track = {
   __typename?: 'Track';
+  /** Its other titles, in order. */
+  alternateTitles: Array<AlternateTitle>;
   /** The track's own performers, without features. */
   artists: Array<CreditedArtist>;
   cdNumber: Scalars['Int']['output'];
@@ -1160,6 +1199,8 @@ export type Track = {
   /** By tag name. */
   tags: Array<TagValues>;
   title: Scalars['String']['output'];
+  /** The title's language. Null: the release's. */
+  titleLanguage?: Maybe<Scalars['String']['output']>;
   trackNumber: Scalars['Int']['output'];
   updatedAt: Scalars['Float']['output'];
 };
@@ -1170,6 +1211,8 @@ export type TrackCreditsInput = {
 };
 
 export type TrackInput = {
+  /** Replaces the alternate titles, in order. Left out, they stay as they are, except one that's now the main title. */
+  alternateTitles?: InputMaybe<Array<AlternateTitleInput>>;
   artists: Array<CreditedArtistInput>;
   cdNumber: Scalars['Int']['input'];
   credits: Array<CreditInput>;
@@ -1180,6 +1223,8 @@ export type TrackInput = {
   /** Replaces the track's tags. Left out, they stay as they are. */
   tags?: InputMaybe<Array<TagValuesInput>>;
   title: Scalars['String']['input'];
+  /** Left out, it stays as it is. Blank: the release's title language. */
+  titleLanguage?: InputMaybe<Scalars['String']['input']>;
   trackNumber: Scalars['Int']['input'];
 };
 
@@ -1289,6 +1334,8 @@ export type DirectiveResolverFn<TResult = Record<PropertyKey, never>, TParent = 
 
 /** Mapping between all available schema types and the resolvers types */
 export type ResolversTypes = {
+  AlternateTitle: ResolverTypeWrapper<AlternateTitle>;
+  AlternateTitleInput: AlternateTitleInput;
   Appearance: ResolverTypeWrapper<AppearanceModel>;
   Artist: ResolverTypeWrapper<ArtistModel>;
   ArtistCounts: ResolverTypeWrapper<ArtistCounts>;
@@ -1306,7 +1353,7 @@ export type ResolversTypes = {
   CreditedArtist: ResolverTypeWrapper<ArtistLinkModel>;
   CreditedArtistInput: CreditedArtistInput;
   DateTag: ResolverTypeWrapper<TagModel>;
-  DiscTitle: ResolverTypeWrapper<DiscTitle>;
+  DiscTitle: ResolverTypeWrapper<Omit<DiscTitle, 'alternateTitles'> & { alternateTitles: Array<ResolversTypes['AlternateTitle']> }>;
   DiscTitleInput: DiscTitleInput;
   File: ResolverTypeWrapper<FileRecordModel>;
   FileCounts: ResolverTypeWrapper<FileCounts>;
@@ -1371,6 +1418,8 @@ export type ResolversTypes = {
 
 /** Mapping between all available schema types and the resolvers parents */
 export type ResolversParentTypes = {
+  AlternateTitle: AlternateTitle;
+  AlternateTitleInput: AlternateTitleInput;
   Appearance: AppearanceModel;
   Artist: ArtistModel;
   ArtistCounts: ArtistCounts;
@@ -1388,7 +1437,7 @@ export type ResolversParentTypes = {
   CreditedArtist: ArtistLinkModel;
   CreditedArtistInput: CreditedArtistInput;
   DateTag: TagModel;
-  DiscTitle: DiscTitle;
+  DiscTitle: Omit<DiscTitle, 'alternateTitles'> & { alternateTitles: Array<ResolversParentTypes['AlternateTitle']> };
   DiscTitleInput: DiscTitleInput;
   File: FileRecordModel;
   FileCounts: FileCounts;
@@ -1445,6 +1494,12 @@ export type ResolversParentTypes = {
   TrackSuggestion: Omit<TrackSuggestion, 'artists' | 'file' | 'track'> & { artists: Array<ResolversParentTypes['ArtistSuggestion']>, file?: Maybe<ResolversParentTypes['File']>, track?: Maybe<ResolversParentTypes['Track']> };
   UnregisteredFolder: Omit<UnregisteredFolder, 'files'> & { files: Array<ResolversParentTypes['FolderFile']> };
   UpdateFileInput: UpdateFileInput;
+};
+
+export type AlternateTitleResolvers<ContextType = Context, ParentType extends ResolversParentTypes['AlternateTitle'] = ResolversParentTypes['AlternateTitle']> = {
+  language?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  printed?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType>;
+  title?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
 };
 
 export type AppearanceResolvers<ContextType = Context, ParentType extends ResolversParentTypes['Appearance'] = ResolversParentTypes['Appearance']> = {
@@ -1540,7 +1595,9 @@ export type DateTagResolvers<ContextType = Context, ParentType extends Resolvers
 };
 
 export type DiscTitleResolvers<ContextType = Context, ParentType extends ResolversParentTypes['DiscTitle'] = ResolversParentTypes['DiscTitle']> = {
+  alternateTitles?: Resolver<Array<ResolversTypes['AlternateTitle']>, ParentType, ContextType>;
   cdNumber?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
+  language?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   title?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
 };
 
@@ -1733,6 +1790,7 @@ export type QueryResolvers<ContextType = Context, ParentType extends ResolversPa
 };
 
 export type ReleaseResolvers<ContextType = Context, ParentType extends ResolversParentTypes['Release'] = ResolversParentTypes['Release']> = {
+  alternateTitles?: Resolver<Array<ResolversTypes['AlternateTitle']>, ParentType, ContextType>;
   artists?: Resolver<Array<ResolversTypes['CreditedArtist']>, ParentType, ContextType>;
   blockers?: Resolver<Array<ResolversTypes['String']>, ParentType, ContextType>;
   catalogNumber?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
@@ -1750,6 +1808,7 @@ export type ReleaseResolvers<ContextType = Context, ParentType extends Resolvers
   released?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   tags?: Resolver<Array<ResolversTypes['TagValues']>, ParentType, ContextType>;
   title?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  titleLanguage?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   tracks?: Resolver<Array<ResolversTypes['Track']>, ParentType, ContextType>;
   updatedAt?: Resolver<ResolversTypes['Float'], ParentType, ContextType>;
   variousArtists?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType>;
@@ -1834,6 +1893,7 @@ export type TextTagResolvers<ContextType = Context, ParentType extends Resolvers
 };
 
 export type TrackResolvers<ContextType = Context, ParentType extends ResolversParentTypes['Track'] = ResolversParentTypes['Track']> = {
+  alternateTitles?: Resolver<Array<ResolversTypes['AlternateTitle']>, ParentType, ContextType>;
   artists?: Resolver<Array<ResolversTypes['CreditedArtist']>, ParentType, ContextType>;
   cdNumber?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
   credits?: Resolver<Array<ResolversTypes['Credit']>, ParentType, ContextType>;
@@ -1847,6 +1907,7 @@ export type TrackResolvers<ContextType = Context, ParentType extends ResolversPa
   release?: Resolver<ResolversTypes['Release'], ParentType, ContextType>;
   tags?: Resolver<Array<ResolversTypes['TagValues']>, ParentType, ContextType>;
   title?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  titleLanguage?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   trackNumber?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
   updatedAt?: Resolver<ResolversTypes['Float'], ParentType, ContextType>;
 };
@@ -1874,6 +1935,7 @@ export type UnregisteredFolderResolvers<ContextType = Context, ParentType extend
 };
 
 export type Resolvers<ContextType = Context> = {
+  AlternateTitle?: AlternateTitleResolvers<ContextType>;
   Appearance?: AppearanceResolvers<ContextType>;
   Artist?: ArtistResolvers<ContextType>;
   ArtistCounts?: ArtistCountsResolvers<ContextType>;

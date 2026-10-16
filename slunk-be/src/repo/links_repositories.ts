@@ -181,6 +181,12 @@ export function createStatsRepository(db: Kysely<DB>): StatsRepository {
           union all select name_language from labels
           union all select language from artist_alternate_names
           union all select language from label_alternate_names
+          union all select title_language from releases
+          union all select title_language from tracks
+          union all select language from release_disc_titles
+          union all select language from release_alternate_titles
+          union all select language from track_alternate_titles
+          union all select language from release_disc_alternate_titles
         )
         where language is not null
         group by language

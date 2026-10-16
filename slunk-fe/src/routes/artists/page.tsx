@@ -17,6 +17,7 @@ import { PageHeader } from "@/components/page-header"
 import { QueryError } from "@/components/query-error"
 import { ReleaseTable } from "@/components/release-table"
 import { TabLinks } from "@/components/tab-links"
+import { Title } from "@/components/titles"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   Table,
@@ -210,6 +211,12 @@ const ArtistReleasesQuery = graphql(`
       items {
         id
         title
+        titleLanguage
+        alternateTitles {
+          title
+          language
+          printed
+        }
         released
         catalogNumber
         cover {
@@ -310,6 +317,7 @@ export function ArtistReleases() {
               "released",
             ]}
             withArtists
+            q={list.q}
             sort={list.sort ?? "released"}
             onSort={(sort) => list.update({ sort })}
           />
@@ -327,6 +335,7 @@ const ArtistAppearancesQuery = graphql(`
         release {
           id
           title
+          titleLanguage
           released
           cover {
             id
@@ -346,6 +355,7 @@ const ArtistAppearancesQuery = graphql(`
         tracks {
           id
           title
+          titleLanguage
           artists {
             artist {
               id
@@ -404,7 +414,10 @@ export function ArtistAppearances() {
                     to={`/releases/${release.id}`}
                     className="font-medium hover:underline"
                   >
-                    {release.title}
+                    <Title
+                      title={release.title}
+                      language={release.titleLanguage}
+                    />
                   </Link>
                 </TableCell>
                 <TableCell className="whitespace-normal">
@@ -419,7 +432,12 @@ export function ArtistAppearances() {
                           to={`/tracks/${track.id}`}
                           className="hover:underline"
                         >
-                          {track.title}
+                          <Title
+                            title={track.title}
+                            language={
+                              track.titleLanguage ?? release.titleLanguage
+                            }
+                          />
                         </Link>
                         {featured && " (feat.)"}
                         <CreditedAsNote
@@ -454,11 +472,13 @@ const ArtistCreditsQuery = graphql(`
         release {
           id
           title
+          titleLanguage
           released
         }
         track {
           id
           title
+          titleLanguage
         }
       }
     }
@@ -505,7 +525,10 @@ export function ArtistCredits() {
                     to={`/releases/${credit.release.id}`}
                     className="hover:underline"
                   >
-                    {credit.release.title}
+                    <Title
+                      title={credit.release.title}
+                      language={credit.release.titleLanguage}
+                    />
                   </Link>
                   {!credit.track && (
                     <CreditedAsNote creditedAs={credit.creditedAs} />
@@ -518,7 +541,13 @@ export function ArtistCredits() {
                         to={`/tracks/${credit.track.id}`}
                         className="hover:underline"
                       >
-                        {credit.track.title}
+                        <Title
+                          title={credit.track.title}
+                          language={
+                            credit.track.titleLanguage ??
+                            credit.release.titleLanguage
+                          }
+                        />
                       </Link>
                       <CreditedAsNote creditedAs={credit.creditedAs} />
                     </>

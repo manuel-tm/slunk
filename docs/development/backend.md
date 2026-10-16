@@ -2,11 +2,11 @@
 
 > Keep this page up to date: any change to the backend's stack, structure, scripts or conventions updates it in the same change.
 
-The backend implements the whole base design ([1_introduction.md](../design/1_introduction.md), phases 0 to 4), with credits as lines from phase 0 of [2_credits.md](../design/2_credits.md), and alternate names and credited names from phases 0 and 1 of [3_alternate_names.md](../design/3_alternate_names.md):
+The backend implements the whole base design ([1_introduction.md](../design/1_introduction.md), phases 0 to 4), with credits as lines from phase 0 of [2_credits.md](../design/2_credits.md), and alternate names, credited names and alternate titles from phases 0 to 2 of [3_alternate_names.md](../design/3_alternate_names.md):
 - the database connection, the migration runner with backup retention, and the migrations;
 - a GraphQL server with a `health` query;
 - the media context: registering files, browsing the library on disk, serving the files' bytes, and file links;
-- the catalog context: artists and labels with their alternate names, releases with their formats, media and labels, tracks, disc titles, credits, and suggestions for importing a folder;
+- the catalog context: artists and labels with their alternate names, releases with their formats, media and labels, tracks, disc titles, alternate titles, credits, and suggestions for importing a folder;
 - the tagging context: tag definitions, their values on releases and tracks, the lists' tag filters, and bulk edits;
 - the library check: what changed on disk since files were registered, and gaps in the catalog.
 
@@ -179,7 +179,12 @@ The path is under `/raw` so it can't collide with the frontend's `/files` pages 
   - With the list left out, renaming the artist to one of its alternate names promotes it: its links lose their credited name, and the name goes, unless it's a real name, which stays as one.
   - A real name kept with the same text as the main name leaves its links showing the main name, since it's the same text.
   - So "Make main", which sends the old main name as a new row, drops the promoted name and sets `keepOldName`, swaps the two names, and every link shows what it did.
-- **Languages** of names (`nameLanguage`, and each alternate name's `language`) are BCP 47 tags, stored in canonical form by `languages.ts`: "JA-latn" becomes `ja-Latn`. A blank one is null, which means unknown. A malformed tag (`ja_JP`), one whose language isn't 2 or 3 letters ("japanese"), and `und` are refused. `languages` lists the tags in use, the most used first, for the language picker.
+- **Alternate titles** ([3_alternate_names.md §4.2](../design/3_alternate_names.md#42-design-decisions)) are other titles a release, track or disc goes by: printed in another script or language ("シーナリィ"), or added in Slunk, like a translation, which isn't `printed`.
+  - A release's are saved with its details, a track's with `setReleaseTracks`, `createTrack` and `updateTrack`, and a disc's with its disc title. Each list replaces the old one. Left out, they stay as they are, except one that's now the main title, which goes.
+  - Titles are cleaned like other text, and a blank one is left out. They compare exactly, case included. A save is refused, with a message, when a title is given twice, or when one is the main title.
+  - Each main title has a language: `titleLanguage` on releases and tracks, `language` on disc titles. A track's or disc's null means the release's. On an update, a `titleLanguage` left out stays as it is.
+  - The release and track lists' search, and so the release picker, match the main title or any alternate title. `releasesTitled`, the import's check for duplicates, matches alternate titles too, ignoring case.
+- **Languages** of names and titles (`nameLanguage`, `titleLanguage`, and each alternate name's or title's `language`) are BCP 47 tags, stored in canonical form by `languages.ts`: "JA-latn" becomes `ja-Latn`. A blank one is null, which means unknown. A malformed tag (`ja_JP`), one whose language isn't 2 or 3 letters ("japanese"), and `und` are refused. `languages` lists the tags in use, the most used first, for the language picker.
 - **Release dates** are typed as `2006`, `2006-01` or `2006-01-10`, which also sets the precision (`dates.ts`). They're stored at midnight UTC on the first unknown day, and returned with only their known parts. An impossible date, like `2013-02-30`, is refused.
 - **A release's artists, labels, formats and media** are saved as ordered lists, replacing the old ones: artists as credited (above), the others by id. The order is `position` for artists and labels, and insertion order for formats and media.
 - **A release's tracks** are saved as a whole list (`setReleaseTracks`):
@@ -189,7 +194,8 @@ The path is under `/raw` so it can't collide with the frontend's `/files` pages 
 
   Before saving, the release's track numbers are shifted out of the way, so swapping two numbers can't trip the unique (release, disc, number) index.
 - **Disc titles** are saved with the tracks, by `setReleaseTracks`, after them: a title needs a track on its disc ([reference/database.md](../reference/database.md#disc-titles)).
-  - Given, they replace the release's titles. Left out, they stay as they are.
+  - Given, they replace the release's titles, with their languages and alternate titles. Left out, they stay as they are.
+  - A disc's alternate titles belong to its title: a disc with alternate titles and no title is refused, and they go when its title goes.
   - Titles are trimmed, and a blank one is left out, since a disc without a title has no row.
   - Two titles for one disc are refused.
   - A disc whose last track leaves it loses its title, whichever mutation moves or deletes the track. The database does that.
@@ -366,7 +372,7 @@ Using it:
 - **Ids:** a field called `id` must identify its object. Apollo Client caches objects by type and `id`, so two objects with the same `id` would be merged into one. So:
   - `FileUse` names the id of the release, artist or track that uses a file `entityId`;
   - `Credit` has no id, since release and track credits come from two tables whose ids overlap;
-  - `DiscTitle` has no id, since it's part of its release;
+  - `DiscTitle` has no id, since it's part of its release, and neither does `AlternateTitle`, which is part of its release, track or disc;
   - `LabelName`, a label's alternate name, has no id, since nothing refers to it. `ArtistName` has one, since a name is saved by its id;
   - `CreditedArtist`, an artist as credited on a release, a track or a credit line, has no id: it's part of its parent, and the same artist is credited differently on two releases;
   - release formats and release media are two types (`ReleaseFormat`, `ReleaseMedium`) behind one `ListItem` interface, so format 1 and medium 1 stay apart;
@@ -379,7 +385,7 @@ Using it:
   - `files`, `file`, `fileCounts`: registered files. `files(withoutTrack: true)` leaves out tracks' audio, for creating tracks.
   - `folder`, `folderFiles`: the library on disk.
   - `registerFiles`, `updateFile`, `deleteFile`: changes to the file records.
-  - `artists`, `artist`, `labels`, `label`, `releases`, `release`, `tracks`, `track`, `listItems`, `listItem`: the catalog. `releases` filters by `format`, `medium`, `label`, `artist` and `tags`, `tracks` by `release` and `tags`. `releasesTitled` finds releases with a title, and `releaseIds` every release a filter matches. `creditRoles` suggests roles for credits. `Artist.alternateNames` and `Label.alternateNames` are their other names, and `languages` the language tags in use on names. A release's and a track's artists, features and performers, and a credit line's artists, are `CreditedArtist`s: the artist, and `creditedAs`, the alternate name printed.
+  - `artists`, `artist`, `labels`, `label`, `releases`, `release`, `tracks`, `track`, `listItems`, `listItem`: the catalog. `releases` filters by `format`, `medium`, `label`, `artist` and `tags`, `tracks` by `release` and `tags`. `releasesTitled` finds releases with a title, and `releaseIds` every release a filter matches. `creditRoles` suggests roles for credits. `Artist.alternateNames` and `Label.alternateNames` are their other names, `Release.alternateTitles`, `Track.alternateTitles` and `DiscTitle.alternateTitles` their other titles, and `languages` the language tags in use on names and titles. A release's and a track's artists, features and performers, and a credit line's artists, are `CreditedArtist`s: the artist, and `creditedAs`, the alternate name printed.
   - `createArtist`, `updateArtist`, `deleteArtist`, and the same for labels, releases, tracks and list items. `ArtistInput` and `LabelInput` take the name's language and the alternate names, and `ArtistInput` `keepOldName`. Release, track and credit inputs take artists as `CreditedArtistInput`s: an `artistId`, and `creditedAs`, the name as printed.
   - `setReleaseTracks`, `setReleaseFiles`, `setReleaseCredits`: a release's edit tabs. Files can be given by path, and they're registered first. `setReleaseTracks` also takes the disc titles, which `Release.discTitles` reads.
   - `setReleaseCover`, `setArtistPicture`, `setLabelPicture`: only the image, from a file id or a path to register first. The pages set an empty one with them.

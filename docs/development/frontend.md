@@ -2,13 +2,14 @@
 
 > Keep this page up to date: any change to the frontend's stack, structure or conventions updates it in the same change.
 
-The frontend implements the whole base design ([1_introduction.md](../design/1_introduction.md), phases 0 to 4), with credits as lines from phase 0 of [2_credits.md](../design/2_credits.md), and alternate names and credited names from phases 0 and 1 of [3_alternate_names.md](../design/3_alternate_names.md):
+The frontend implements the whole base design ([1_introduction.md](../design/1_introduction.md), phases 0 to 4), with credits as lines from phase 0 of [2_credits.md](../design/2_credits.md), and alternate names, credited names and alternate titles from phases 0 to 2 of [3_alternate_names.md](../design/3_alternate_names.md):
 - the app shell (sidebar with the Import button, page header) and a "not found" page;
 - the dashboard: the backend's status, the catalog's totals, and the newest releases;
 - the files pages: list, register, read and update;
 - the catalog's pages: releases (with the release page and its edit tabs), artists (with their tabs), tracks, labels, release formats and release media;
 - alternate names of artists and labels, and the language of each name;
 - artists as credited on releases, tracks and credit lines, with the name printed there;
+- alternate titles of releases, tracks and discs, under their main titles, and the language of each title;
 - tags: their definitions' pages, a release's Tags tab, its tags on the release page, a track's tags, and tag filters on the release and track lists;
 - bulk edits on the release list: setting or removing a tag on many releases;
 - the import: a release built from a folder, step by step;
@@ -85,6 +86,10 @@ slunk-fe/
       alternate-names.tsx  alternate names under a name, and the one a
                            search matched
       language-picker.tsx  a language tag, by name or tag
+      titles.tsx           a title with its language, the lines of alternate
+                           titles under it, and a list row's one
+      alternate-titles-editor.tsx  alternate titles, and a "Titles" popover
+                           for a table row
       credited-as.tsx      the name an artist is credited with: a field,
                            and a chip label with a popover
       file-uses.tsx        what uses a file, each linking to it
@@ -117,6 +122,8 @@ slunk-fe/
       languages.ts         language names, tags, and lang/dir for names
       names.ts             the alternate name a search matched
       credited.ts          artists as credited: as options, and as inputs
+      titles.ts            which alternate title a list row shows, and the
+                           artists' names in a title's language
       tags.ts              tag types, values, and the list's tag filters
       utils.ts             cn() helper
 ```
@@ -133,6 +140,11 @@ slunk-fe/
 - **Unknown ids:** a read or update page whose query returns null renders `NotFound` (design §7.2).
 - **Names** of artists and labels, wherever they're listed, go through `Names`, which joins them with commas: "U2, Green Day". An "&" is only ever part of a name, as in "Simon & Garfunkel".
 - **Artists as credited** ([3_alternate_names.md §7.1](../design/3_alternate_names.md#71-showing-names-and-titles)): a release's and a track's artists, features and performers, and a credit line's artists, are `CreditedArtist`s, asked for as `artists { artist { id name nameLanguage } creditedAs { name language } }`. `Names` takes them as they come, and shows the name printed, linking to the artist, with the main name in its tooltip: "ALIKA" links to Alika. There's no "*". So an artist page's Releases tab reads "ALIKA – virmalised", and its Appearances and Credits tabs add "as A. Ronnell" after a row's title (`CreditedAsNote`), since they don't show the name otherwise.
+- **Titles** ([3_alternate_names.md §7](../design/3_alternate_names.md#7-frontend)) go through `Title`, which sets `lang` to the title's language: a release's `titleLanguage`, and a track's or disc's own, or else the release's. Queries that show a title ask for `titleLanguage`.
+  - `AlternateTitleLines` shows a line under the main one for each alternate title, smaller and muted, with no "=". An unprinted one is in italics, with a tooltip saying it was added in Slunk.
+  - Given the artists the main line names, a line repeats them in its title's language (§7.2, `artistsIn()` in `lib/titles.ts`): each artist's first name in that language, else the name it's credited with unless that's in another language, else the main name. When they'd all read the same as on the main line, or the title has no language, the line shows only the title. So the queries ask for those artists' `alternateNames { name language }`.
+  - The release page's heading, the track page's heading and the tracklist use it. The tracklist repeats the artists only on a various-artists release, where its rows name them. Disc headings show their alternate titles too. "Hide alternate titles" hides them in the tracklist, and the browser remembers it (`slunk.release.hideAlternateTitles`), like "Hide credits".
+  - Lists show one alternate title under each main title, cut to one line (`ListedAlternateTitle`): the one the search matched, or else the first. `ReleaseTable` takes the list's `q` for it.
 - **Languages of names** ([3_alternate_names.md §7.1](../design/3_alternate_names.md#71-showing-names-and-titles)): a shown name gets `textProps(language)` from `lib/languages.ts`, which sets `lang` to its language and `dir="auto"`. `lang` picks the glyphs (Japanese and Chinese share code points but not shapes), and `dir="auto"` keeps a right-to-left name from moving the dashes and commas around it. So a query that shows an artist's or label's name also asks for `nameLanguage`. `Names` does it for each name, a crumb takes a `lang`, and a picker option one too. `languageName()` names a tag with the browser's `Intl.DisplayNames`: `ja-Latn` is "Japanese (Latin)".
 - **Alternate names** show under an artist's or label's name on its page (`AlternateNames`): "Real name", then "Other names", each with its language. In the artist and label lists, a row that a search found by an alternate name shows that name under the main one (`MatchedName`), and the pickers show it after the option's name, muted.
 - **Links:** use React Router's `Link`.
@@ -149,7 +161,7 @@ slunk-fe/
   - The types only have `__typename` when the query asks for it. To tell an interface's types apart, like a `TextTag` among tags, select `__typename` and compare it.
 - **One query per route:** a page that needs a related name, like the release whose tracks a list filters on, asks for it in the same query, with `@include(if: …)`. The release edit tabs' header reads the release's title from the cache (`fetchPolicy: "cache-only"`), since each tab's own query fetched it.
 - **Freshness:** queries use `cache-and-network`, set as the client's default. A page shows what's cached at once and asks the backend again, so a list never shows what was there before a change. After a delete, the page also evicts the deleted object from the cache.
-- **Lists on cached objects,** like a release's tags, credits or artists, are always returned whole, so a new one replaces the cached one. `apollo.ts` marks them with `merge: false`. Without it, Apollo still replaces the list, but warns in the console when it gets shorter. A new list field on `Release`, `Track` or `Artist` goes there too.
+- **Lists on cached objects,** like a release's tags, credits or artists, are always returned whole, so a new one replaces the cached one. `apollo.ts` marks them with `merge: false`. Without it, Apollo still replaces the list, but warns in the console when it gets shorter. A new list field on `Release`, `Track`, `Artist` or `Label` goes there too.
 - **Mutations** reject when they fail, so callers wrap them in `try`. The page shows the error with `QueryError`, from the hook's `error`, and stays where it is.
 - **The backend:** the Apollo client sends requests to `/graphql`. Files are at `/raw/files/:id`, for `<img>`, `<audio>` and "Open the file". In development, Vite proxies `/graphql` and `/raw` to the backend at `127.0.0.1:4000`, and so does `vite preview`. Nothing else is proxied, so `/files/12` is always the app's page.
 
@@ -185,6 +197,7 @@ Lists follow design §7.2:
   - `OrderedList` and `ChipList` take `credited` for artists. An ordered list's row then has a `CreditedAsInput`, and a chip shows the name printed, which opens a popover with one (`CreditedChipLabel`). The credits editor's chips do the same.
   - `CreditedAsInput` is a text field that suggests the artist's alternate names through a `<datalist>`, asked for only while it has focus. Whatever is typed is the name: blank is the main name, which the placeholder shows ("as Drake"), and a name the artist doesn't have yet is added to its alternate names on save.
 - **Alternate names** use `AlternateNamesEditor`, in the artist and label forms: a row per name, with its language, a note, and for an artist whether it's a real name. A name listed twice, or the same as the main name (unless it's a real name), is marked, and `alternateNamesValid()` keeps the form from saving until it's fixed. Names compare exactly, case included. `artistNamesInput()` and `labelNamesInput()` turn the rows into the API's inputs, with each saved name's id.
+- **Alternate titles** use `AlternateTitlesEditor`, in the release details form and the track form, beside the title's language: a row per title, with its language and whether it's printed. A title listed twice, or the same as the main title, is marked, and `alternateTitlesValid()` keeps the form from saving. In the tracks editor, each row and each disc title has a "Titles" button (`TitlesPopover`) that opens the language and the editor in a popover, and shows how many alternate titles there are. A disc's is disabled until it has a title.
 - **The artist form** also shows how many links each name is credited on, and how many show the main name.
   - "Make main" swaps a name with the main name, language included: the old main name takes its row as a new name, and a real name stays too. The save then sends `keepOldName`, so every link keeps showing what it showed.
   - Before saving, `SaveDialog` asks when the save changes what links show: removing a name that's in use credits its links with the main name, and a rename while links show the old name asks whether to keep it on them ("Keep 'Alika'" or "Show 'Alika Milova'").

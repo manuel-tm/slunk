@@ -11,15 +11,20 @@ import type {
   TracksRepository,
   TrackValues,
 } from "../slunk/catalog/repository.ts"
+import {
+  alternateTitlesOf,
+  setAlternateTitles,
+  titleMatches,
+} from "./alternate_titles.ts"
 import type { DB, Tracks } from "./db_types.ts"
-import { chunks, contains, groupBy } from "./helpers.ts"
+import { chunks, groupBy } from "./helpers.ts"
 import { tagMatches } from "./tags_repository.ts"
 
 export function createTracksRepository(db: Kysely<DB>): TracksRepository {
   return {
     async list({ offset, limit, sort, descending, search, release, tags }) {
       let query = db.selectFrom("tracks")
-      if (search) query = query.where(contains("title", search))
+      if (search) query = query.where(titleMatches("track", search))
       if (release !== undefined) query = query.where("release_id", "=", release)
       for (const filter of tags ?? []) {
         query = query.where(tagMatches("track", filter))
@@ -159,6 +164,10 @@ export function createTracksRepository(db: Kysely<DB>): TracksRepository {
       )
     },
 
+    alternateTitlesOf: (trackIds) => alternateTitlesOf(db, "track", trackIds),
+    setAlternateTitles: (trackId, titles) =>
+      setAlternateTitles(db, "track", trackId, titles),
+
     async setArtists(trackId, artists) {
       await db
         .deleteFrom("artists_tracks")
@@ -205,6 +214,7 @@ function toTrack(row: Selectable<Tracks>): Track {
   return {
     id: row.id,
     title: row.title,
+    titleLanguage: row.title_language,
     durationMs: row.duration_ms,
     trackNumber: row.track_number,
     cdNumber: row.cd_number,
@@ -220,6 +230,7 @@ function toRow(values: Partial<TrackValues>): Updateable<Tracks>
 function toRow(values: Partial<TrackValues>): Updateable<Tracks> {
   return {
     title: values.title,
+    title_language: values.titleLanguage,
     duration_ms: values.durationMs,
     track_number: values.trackNumber,
     cd_number: values.cdNumber,

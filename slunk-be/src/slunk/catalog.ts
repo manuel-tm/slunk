@@ -4,6 +4,7 @@ import { basename, dirname } from "node:path"
 import type {
   AlternateName,
   AlternateNameValues,
+  AlternateTitle,
   Artist,
   ArtistLink,
   CatalogStore,
@@ -79,7 +80,33 @@ export type LabelInput = {
 /** Artists and labels both have alternate names. */
 type NamedKind = "artist" | "label"
 
-export type ReleaseInput = {
+/** An alternate title (3_alternate_names.md §6). */
+export type AlternateTitleInput = {
+  title: string
+  /** A BCP 47 tag. Blank means unknown. */
+  language?: string | null
+  /** On the release as published. True when left out. */
+  printed?: boolean | null
+}
+
+/**
+ * A main title's language and alternate titles, on a release, a track or a
+ * disc. Left out (undefined), each stays as it is.
+ */
+type TitlesInput = {
+  titleLanguage?: string | null
+  alternateTitles?: AlternateTitleInput[] | null
+}
+
+/** A disc's own title, its language, and its alternate titles. */
+export type DiscTitleInput = {
+  cdNumber: number
+  title: string
+  language?: string | null
+  alternateTitles?: AlternateTitleInput[] | null
+}
+
+export type ReleaseInput = TitlesInput & {
   title: string
   /** `2006`, `2006-01` or `2006-01-10` */
   released?: string | null
@@ -92,16 +119,17 @@ export type ReleaseInput = {
 }
 
 /** A row of a release's tracks: an existing track, or a new one from a file. */
-export type ReleaseTrackInput = FileRef & {
-  id?: number | null
-  cdNumber: number
-  trackNumber: number
-  title: string
-  artists: CreditedArtistInput[]
-  features: CreditedArtistInput[]
-}
+export type ReleaseTrackInput = FileRef &
+  TitlesInput & {
+    id?: number | null
+    cdNumber: number
+    trackNumber: number
+    title: string
+    artists: CreditedArtistInput[]
+    features: CreditedArtistInput[]
+  }
 
-export type TrackInput = {
+export type TrackInput = TitlesInput & {
   releaseId: number
   fileId: number
   cdNumber: number
@@ -272,6 +300,7 @@ export function createCatalog({
     const released = input.released?.trim()
     return {
       title: cleanText(input.title),
+      titleLanguage: languageTag(input.titleLanguage),
       ...(released
         ? releaseDate(parseDate(released))
         : { releaseDate: null, releaseDatePrecision: null }),
@@ -395,6 +424,34 @@ export function createCatalog({
         ? alternateNameRows("label", label.name, input)
         : (existing ?? []).filter((name) => name.name !== label.name)
     )
+  }
+
+  /**
+   * Saves a release's or track's alternate titles, after its main title
+   * (3_alternate_names.md §6). Left out, they stay as they are, except one
+   * that's now the main title, which goes.
+   */
+  async function saveAlternateTitles(
+    repository: CatalogStore["releases"] | CatalogStore["tracks"],
+    id: number,
+    main: string,
+    input: AlternateTitleInput[] | null | undefined,
+    what: string
+  ) {
+    if (input) {
+      await repository.setAlternateTitles(
+        id,
+        alternateTitleRows(main, input, what)
+      )
+      return
+    }
+    const existing = (await repository.alternateTitlesOf([id])).get(id) ?? []
+    if (existing.some((title) => title.title === main)) {
+      await repository.setAlternateTitles(
+        id,
+        existing.filter((title) => title.title !== main)
+      )
+    }
   }
 
   /** What keeps an artist from being deleted. */
@@ -594,6 +651,12 @@ export function createCatalog({
     releasesTitled: (title: string) => store.releases.findByTitle(title),
     releaseLinksOf: (link: ReleaseLink, ids: readonly number[]) =>
       store.releases.linksOf(link, ids),
+    /** Alternate titles by release, in order. */
+    releaseTitlesOf: (ids: readonly number[]) =>
+      store.releases.alternateTitlesOf(ids),
+    /** Alternate titles by track, in order. */
+    trackTitlesOf: (ids: readonly number[]) =>
+      store.tracks.alternateTitlesOf(ids),
     /** Release artists, as credited, by release. */
     releaseArtistsOf: (ids: readonly number[]) => store.releases.artistsOf(ids),
     discTitlesOf: (ids: readonly number[]) => store.releases.discTitlesOf(ids),
@@ -611,16 +674,34 @@ export function createCatalog({
           ...values,
           coverPicture: null,
         })
+        await saveAlternateTitles(
+          tx.releases,
+          release.id,
+          release.title,
+          input.alternateTitles,
+          "the release"
+        )
         await setReleaseLinks(tx, release.id, input)
         return release
       })
     },
 
     async updateRelease(id: number, input: ReleaseInput) {
-      const values = releaseValues(input)
+      const { titleLanguage, ...values } = releaseValues(input)
       return store.transaction(async (tx) => {
-        const release = await tx.releases.update(id, values)
+        const release = await tx.releases.update(id, {
+          ...values,
+          // Left out, it stays as it is
+          ...(input.titleLanguage !== undefined && { titleLanguage }),
+        })
         if (!release) throw notFound("release", id)
+        await saveAlternateTitles(
+          tx.releases,
+          id,
+          release.title,
+          input.alternateTitles,
+          "the release"
+        )
         await setReleaseLinks(tx, id, input)
         return release
       })
@@ -650,7 +731,7 @@ export function createCatalog({
     async setReleaseTracks(
       id: number,
       rows: ReleaseTrackInput[],
-      discTitles?: DiscTitle[] | null
+      discTitles?: DiscTitleInput[] | null
     ) {
       const release = await store.releases.get(id)
       if (!release) throw notFound("release", id)
@@ -688,6 +769,10 @@ export function createCatalog({
             cdNumber: row.cdNumber,
             trackNumber: row.trackNumber,
             title: cleanText(row.title),
+            // Left out, it stays as it is
+            ...(row.titleLanguage !== undefined && {
+              titleLanguage: languageTag(row.titleLanguage),
+            }),
           }
           let trackId = row.id
           if (trackId != null) {
@@ -696,6 +781,7 @@ export function createCatalog({
             const fileId = refId(row, registered)
             const file = await tx.files.get(fileId)
             const track = await tx.tracks.insert({
+              titleLanguage: null,
               ...values,
               releaseId: id,
               fileId,
@@ -703,6 +789,13 @@ export function createCatalog({
             })
             trackId = track.id
           }
+          await saveAlternateTitles(
+            tx.tracks,
+            trackId,
+            values.title,
+            row.alternateTitles,
+            `track ${row.trackNumber}`
+          )
           await tx.tracks.setArtists(
             trackId,
             await credited(trackArtists(row.artists, row.features))
@@ -798,12 +891,20 @@ export function createCatalog({
         const registered = await media.insertPrepared(tx, prepared)
         const track = await tx.tracks.insert({
           title: cleanText(input.title),
+          titleLanguage: languageTag(input.titleLanguage),
           cdNumber: input.cdNumber,
           trackNumber: input.trackNumber,
           releaseId: input.releaseId,
           fileId: input.fileId,
           durationMs,
         })
+        await saveAlternateTitles(
+          tx.tracks,
+          track.id,
+          track.title,
+          input.alternateTitles,
+          "the track"
+        )
         const credited = creditedNames(tx)
         await tx.tracks.setArtists(
           track.id,
@@ -835,6 +936,10 @@ export function createCatalog({
         const registered = await media.insertPrepared(tx, prepared)
         const track = await tx.tracks.update(id, {
           title: cleanText(input.title),
+          // Left out, it stays as it is
+          ...(input.titleLanguage !== undefined && {
+            titleLanguage: languageTag(input.titleLanguage),
+          }),
           cdNumber: input.cdNumber,
           trackNumber: input.trackNumber,
           releaseId: input.releaseId,
@@ -842,6 +947,13 @@ export function createCatalog({
           durationMs,
         })
         if (!track) throw notFound("track", id)
+        await saveAlternateTitles(
+          tx.tracks,
+          id,
+          track.title,
+          input.alternateTitles,
+          "the track"
+        )
         const credited = creditedNames(tx)
         await tx.tracks.setArtists(
           id,
@@ -1121,16 +1233,66 @@ function creditLines(credits: CreditInput[]): CreditInput[] {
 
 /**
  * Disc titles as they're saved: trimmed, and a blank one left out, since a
- * disc without a title has no row. Refuses two titles for one disc.
+ * disc without a title has no row. Refuses two titles for one disc, and
+ * alternate titles on a disc with no title, since they belong to its title.
  */
-function discTitleRows(titles: DiscTitle[]): DiscTitle[] {
+function discTitleRows(titles: DiscTitleInput[]): DiscTitle[] {
   const discs = new Set<number>()
-  return titles.flatMap(({ cdNumber, title }) => {
+  return titles.flatMap(({ cdNumber, title, language, alternateTitles }) => {
     const trimmed = cleanText(title)
-    if (!trimmed) return []
+    const what = `disc ${cdNumber}`
+    if (!trimmed) {
+      if (alternateTitles?.some((t) => cleanText(t.title))) {
+        throw new Error(`Disc ${cdNumber} has alternate titles but no title`)
+      }
+      return []
+    }
     if (discs.has(cdNumber)) throw new Error(`Disc ${cdNumber} has two titles`)
     discs.add(cdNumber)
-    return [{ cdNumber, title: trimmed }]
+    return [
+      {
+        cdNumber,
+        title: trimmed,
+        language: languageTag(language),
+        alternateTitles: alternateTitleRows(
+          trimmed,
+          alternateTitles ?? [],
+          what
+        ),
+      },
+    ]
+  })
+}
+
+/**
+ * Alternate titles as they're saved (3_alternate_names.md §6): cleaned, a
+ * blank one left out, and languages in canonical form. Refuses a title given
+ * twice, and one that's the main title. Titles compare exactly, case
+ * included.
+ */
+function alternateTitleRows(
+  main: string,
+  titles: AlternateTitleInput[],
+  what: string
+): AlternateTitle[] {
+  const seen = new Set<string>()
+  return titles.flatMap((input) => {
+    const title = cleanText(input.title)
+    if (!title) return []
+    if (seen.has(title)) {
+      throw new Error(`"${title}" is listed twice on ${what}`)
+    }
+    seen.add(title)
+    if (title === main) {
+      throw new Error(`"${title}" is already the main title of ${what}`)
+    }
+    return [
+      {
+        title,
+        language: languageTag(input.language),
+        printed: input.printed ?? true,
+      },
+    ]
   })
 }
 

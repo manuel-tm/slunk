@@ -1,6 +1,13 @@
 import { useMutation } from "@apollo/client/react"
 import { useState } from "react"
 
+import {
+  type AlternateTitleRow,
+  AlternateTitlesEditor,
+  alternateTitlesInput,
+  alternateTitlesValid,
+} from "@/components/alternate-titles-editor"
+import { LanguagePicker } from "@/components/language-picker"
 import { OrderedList } from "@/components/ordered-list"
 import type { Option } from "@/components/picker"
 import { ArtistPicker, LabelPicker, ListItemPicker } from "@/components/pickers"
@@ -17,9 +24,12 @@ import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import { graphql } from "@/gql"
 import { creditedInput } from "@/lib/credited"
+import { textProps } from "@/lib/languages"
 
 export type DetailsValues = {
   title: string
+  titleLanguage: string | null
+  alternateTitles: AlternateTitleRow[]
   released: string
   variousArtists: boolean
   catalogNumber: string
@@ -31,6 +41,8 @@ export type DetailsValues = {
 
 export const EMPTY_DETAILS: DetailsValues = {
   title: "",
+  titleLanguage: null,
+  alternateTitles: [],
   released: "",
   variousArtists: false,
   catalogNumber: "",
@@ -89,6 +101,8 @@ export function ReleaseDetailsForm({
         event.preventDefault()
         const input = {
           title: values.title,
+          titleLanguage: values.titleLanguage,
+          alternateTitles: alternateTitlesInput(values.alternateTitles),
           released: values.released.trim() || null,
           variousArtists: values.variousArtists,
           catalogNumber: values.catalogNumber.trim() || null,
@@ -112,12 +126,37 @@ export function ReleaseDetailsForm({
         {error && <QueryError error={error} title="Can't save" />}
         <Field>
           <FieldLabel htmlFor="title">Title</FieldLabel>
-          <Input
-            id="title"
-            required
-            value={values.title}
-            onChange={(e) => set({ title: e.target.value })}
+          <div className="grid grid-cols-[1fr_14rem] gap-2">
+            <Input
+              id="title"
+              required
+              value={values.title}
+              {...textProps(values.titleLanguage)}
+              onChange={(e) => set({ title: e.target.value })}
+            />
+            <LanguagePicker
+              aria-label="Language of the title"
+              value={values.titleLanguage}
+              onChange={(titleLanguage) => set({ titleLanguage })}
+            />
+          </div>
+          <FieldDescription>
+            The language is also the tracks' and discs', unless they have their
+            own.
+          </FieldDescription>
+        </Field>
+        <Field>
+          <FieldLabel>Alternate titles</FieldLabel>
+          <AlternateTitlesEditor
+            main={values.title}
+            titles={values.alternateTitles}
+            onChange={(alternateTitles) => set({ alternateTitles })}
           />
+          <FieldDescription>
+            The title printed in another script or language (シーナリィ), or a
+            translation added here, which isn't printed. Searching finds the
+            release by any of them.
+          </FieldDescription>
         </Field>
         <Field>
           <FieldLabel>Artists</FieldLabel>
@@ -199,7 +238,14 @@ export function ReleaseDetailsForm({
           </FieldDescription>
         </Field>
         <div>
-          <Button type="submit" disabled={created.loading || updated.loading}>
+          <Button
+            type="submit"
+            disabled={
+              created.loading ||
+              updated.loading ||
+              !alternateTitlesValid(values.title, values.alternateTitles)
+            }
+          >
             {submitLabel}
           </Button>
         </div>

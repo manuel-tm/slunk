@@ -35,9 +35,18 @@ import {
   FieldSet,
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import {
+  type AlternateTitleRow,
+  alternateTitleRow,
+  AlternateTitlesEditor,
+  alternateTitlesInput,
+  alternateTitlesValid,
+} from "@/components/alternate-titles-editor"
+import { LanguagePicker } from "@/components/language-picker"
 import { Skeleton } from "@/components/ui/skeleton"
 import { graphql } from "@/gql"
 import { creditedInput, creditedOption } from "@/lib/credited"
+import { textProps } from "@/lib/languages"
 import { NotFound } from "@/routes/not-found"
 
 const TrackFormQuery = graphql(`
@@ -52,6 +61,12 @@ const TrackFormQuery = graphql(`
     track(id: $id) @include(if: $isEdit) {
       id
       title
+      titleLanguage
+      alternateTitles {
+        title
+        language
+        printed
+      }
       cdNumber
       trackNumber
       release {
@@ -150,6 +165,9 @@ type Values = {
   cdNumber: number
   trackNumber: number | ""
   title: string
+  /** Null: the release's */
+  titleLanguage: string | null
+  alternateTitles: AlternateTitleRow[]
   artists: Option[]
   features: Option[]
   credits: CreditLine[]
@@ -189,6 +207,8 @@ export function TrackForm() {
           cdNumber: track.cdNumber,
           trackNumber: track.trackNumber,
           title: track.title,
+          titleLanguage: track.titleLanguage,
+          alternateTitles: track.alternateTitles.map(alternateTitleRow),
           artists: track.artists.map(creditedOption),
           features: track.features.map(creditedOption),
           credits: track.credits.map(({ role, artists }) => ({
@@ -210,6 +230,8 @@ export function TrackForm() {
             data.prefillFile?.fileName
               .replace(/\.[^.]+$/, "")
               .replace(/^\d+[\s._-]+/, "") ?? "",
+          titleLanguage: null,
+          alternateTitles: [],
           artists: [],
           features: [],
           credits: [],
@@ -266,6 +288,8 @@ function Form({ id, initial }: { id?: string; initial: Values }) {
           cdNumber: values.cdNumber,
           trackNumber: values.trackNumber,
           title: values.title,
+          titleLanguage: values.titleLanguage,
+          alternateTitles: alternateTitlesInput(values.alternateTitles),
           artists: creditedInput(values.artists),
           features: creditedInput(values.features),
           credits: creditsInput(values.credits),
@@ -340,10 +364,34 @@ function Form({ id, initial }: { id?: string; initial: Values }) {
               id="title"
               required
               value={values.title}
+              {...textProps(values.titleLanguage)}
               onChange={(e) => set({ title: e.target.value })}
             />
           </Field>
         </div>
+        <Field>
+          <FieldLabel htmlFor="title-language">Title language</FieldLabel>
+          <div className="w-56">
+            <LanguagePicker
+              id="title-language"
+              placeholder="The release's"
+              value={values.titleLanguage}
+              onChange={(titleLanguage) => set({ titleLanguage })}
+            />
+          </div>
+          <FieldDescription>
+            Blank for the release's. Set it for a track in another language, as
+            on a compilation.
+          </FieldDescription>
+        </Field>
+        <Field>
+          <FieldLabel>Alternate titles</FieldLabel>
+          <AlternateTitlesEditor
+            main={values.title}
+            titles={values.alternateTitles}
+            onChange={(alternateTitles) => set({ alternateTitles })}
+          />
+        </Field>
         <Field>
           <FieldLabel>Artists</FieldLabel>
           <OrderedList
@@ -392,7 +440,8 @@ function Form({ id, initial }: { id?: string; initial: Values }) {
               updated.loading ||
               !values.release ||
               !values.file ||
-              !creditsValid(values.credits)
+              !creditsValid(values.credits) ||
+              !alternateTitlesValid(values.title, values.alternateTitles)
             }
           >
             Save

@@ -167,6 +167,9 @@ export const catalogResolvers: Resolvers = {
           cdNumber: row.cdNumber,
           trackNumber: row.trackNumber,
           title: row.title,
+          // Left out (undefined), they stay as they are
+          titleLanguage: row.titleLanguage,
+          alternateTitles: row.alternateTitles,
           artists: credited(row.artists),
           features: credited(row.features),
         })),
@@ -264,6 +267,8 @@ export const catalogResolvers: Resolvers = {
   },
 
   Release: {
+    alternateTitles: (release, _args, { loaders }) =>
+      loaders.releaseTitles.load(release.id),
     released: (release, _args, { catalog }) => catalog.released(release),
     cover: (release, _args, { loaders }) =>
       release.coverPicture === null
@@ -302,6 +307,8 @@ export const catalogResolvers: Resolvers = {
   },
 
   Track: {
+    alternateTitles: (track, _args, { loaders }) =>
+      loaders.trackTitles.load(track.id),
     release: (track, _args, { loaders }) =>
       loadRequired(loaders.release, track.releaseId),
     file: (track, _args, { loaders }) =>
@@ -386,18 +393,29 @@ function labelInput(input: {
   }
 }
 
-function releaseInput(input: {
-  title: string
-  released?: string | null
-  catalogNumber?: string | null
-  variousArtists: boolean
-  artists: { artistId: string; creditedAs?: string | null }[]
-  labelIds: string[]
-  formatIds: string[]
-  mediumIds: string[]
-}) {
+/** An input's title language and alternate titles. */
+type TitlesInput = {
+  titleLanguage?: string | null
+  alternateTitles?:
+    { title: string; language?: string | null; printed: boolean }[] | null
+}
+
+function releaseInput(
+  input: TitlesInput & {
+    title: string
+    released?: string | null
+    catalogNumber?: string | null
+    variousArtists: boolean
+    artists: { artistId: string; creditedAs?: string | null }[]
+    labelIds: string[]
+    formatIds: string[]
+    mediumIds: string[]
+  }
+) {
   return {
     title: input.title,
+    titleLanguage: input.titleLanguage,
+    alternateTitles: input.alternateTitles,
     released: input.released,
     catalogNumber: input.catalogNumber,
     variousArtists: input.variousArtists,
@@ -408,28 +426,32 @@ function releaseInput(input: {
   }
 }
 
-function trackInput(input: {
-  releaseId: string
-  fileId: string
-  cdNumber: number
-  trackNumber: number
-  title: string
-  artists: { artistId: string; creditedAs?: string | null }[]
-  features: { artistId: string; creditedAs?: string | null }[]
-  credits: Parameters<typeof credits>[0]
-  files: {
-    fileId?: string | null
-    path?: string | null
-    note?: string | null
-  }[]
-  tags?: Parameters<typeof tagValues>[0] | null
-}) {
+function trackInput(
+  input: TitlesInput & {
+    releaseId: string
+    fileId: string
+    cdNumber: number
+    trackNumber: number
+    title: string
+    artists: { artistId: string; creditedAs?: string | null }[]
+    features: { artistId: string; creditedAs?: string | null }[]
+    credits: Parameters<typeof credits>[0]
+    files: {
+      fileId?: string | null
+      path?: string | null
+      note?: string | null
+    }[]
+    tags?: Parameters<typeof tagValues>[0] | null
+  }
+) {
   return {
     releaseId: n(input.releaseId),
     fileId: n(input.fileId),
     cdNumber: input.cdNumber,
     trackNumber: input.trackNumber,
     title: input.title,
+    titleLanguage: input.titleLanguage,
+    alternateTitles: input.alternateTitles,
     artists: credited(input.artists),
     features: credited(input.features),
     credits: credits(input.credits),
