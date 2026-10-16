@@ -1,5 +1,6 @@
 import { useState } from "react"
 
+import { Cover } from "@/components/cover"
 import {
   Combobox,
   ComboboxContent,
@@ -9,8 +10,11 @@ import {
   ComboboxList,
 } from "@/components/ui/combobox"
 
-/** Something a picker offers: an id, and what it shows. */
-export type Option = { id: string; name: string }
+/**
+ * Something a picker offers: an id, and what it shows. An option with an
+ * `image` key shows it before the name, or a placeholder when it's null.
+ */
+export type Option = { id: string; name: string; image?: { id: string } | null }
 
 const CREATE = "__create__"
 
@@ -95,6 +99,9 @@ export function Picker<T extends Option>({
         <ComboboxList>
           {(option: T) => (
             <ComboboxItem key={option.id} value={option}>
+              {option.image !== undefined && (
+                <Cover file={option.image} alt="" className="size-8 shrink-0" />
+              )}
               {option.name}
             </ComboboxItem>
           )}

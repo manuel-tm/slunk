@@ -56,7 +56,7 @@ export function FileGallery({
                 rel="noreferrer"
                 className="flex flex-col gap-1"
               >
-                <Cover file={file} alt={note ?? file.name} />
+                <Cover file={file} alt={note ?? file.name} className="w-full" />
                 <span className="truncate">{note ?? file.name}</span>
               </a>
             ))}

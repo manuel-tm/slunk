@@ -1,6 +1,7 @@
 import { useQuery } from "@apollo/client/react"
 import { Link } from "react-router"
 
+import { Cover } from "@/components/cover"
 import { ListLayout, PER_PAGE } from "@/components/list/list-layout"
 import { SortableHead } from "@/components/list/sortable-head"
 import {
@@ -22,6 +23,9 @@ const ArtistsQuery = graphql(`
       items {
         id
         name
+        picture {
+          id
+        }
         insertedAt
         updatedAt
       }
@@ -55,6 +59,7 @@ export function ArtistList() {
         <TableHeader>
           <TableRow>
             <TableHead>Id</TableHead>
+            <TableHead />
             <SortableHead
               column="name"
               sort={list.sort}
@@ -70,6 +75,11 @@ export function ArtistList() {
           {data?.artists.items.map((artist) => (
             <TableRow key={artist.id}>
               <TableCell className="tabular-nums">{artist.id}</TableCell>
+              <TableCell>
+                <Link to={`/artists/${artist.id}`}>
+                  <Cover file={artist.picture} alt="" className="size-10" />
+                </Link>
+              </TableCell>
               <TableCell>
                 <Link to={`/artists/${artist.id}`} className="hover:underline">
                   {artist.name}

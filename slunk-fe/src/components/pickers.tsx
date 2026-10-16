@@ -19,6 +19,9 @@ const ArtistOptions = graphql(`
       items {
         id
         name
+        image: picture {
+          id
+        }
       }
     }
   }
@@ -160,6 +163,9 @@ const ReleaseOptions = graphql(`
       items {
         id
         name: title
+        image: cover {
+          id
+        }
       }
     }
   }

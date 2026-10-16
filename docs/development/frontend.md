@@ -148,6 +148,8 @@ Lists follow design §7.2:
 - **Size:** lists ask for 50 rows a page.
 - **Frame:** `ListLayout` is a list page's frame: the header and its New button, the search box, filters, the pager, then the table, or what's there while it loads, fails or is empty.
 - **The release table** (`ReleaseTable`) is shared by the release list and the label and artist pages, each with its own columns (design §7.6). With `selection`, each row gets a checkbox, and the header's selects the page.
+- **Pictures:** rows of releases and artists start with a small cover or picture (`Cover`), linking to its page: the release table, an artist's appearances, and the artist list, whose columns are id, picture, name, added, updated. They're the original images, loaded lazily (design §7.3).
+  - `Cover` takes exactly the size its `className` gives it. It drops the `max-width: 100%` Tailwind gives every image, which lets a table too wide for the page, like the release list, squeeze an image's column to nothing. So a `Cover` always gets a width, like `size-10` or `w-full`.
 - **The tags list** (`/tags`) is the exception to the frame: it shows a table per type (design §7.8), each with every tag of that type, up to 200, and a note to search when there are more. The search box and the name sort apply to all three.
 
 ### Forms
@@ -157,6 +159,7 @@ Lists follow design §7.2:
 - **Saving** goes to the read page. When a save fails, the form stays and shows the backend's reason, which is often the database's own message (a CHECK or a trigger).
 - **Pickers** (design §7.2): artists, labels, formats, media, releases, files and tags are chosen with the pickers in `pickers.tsx`, each a `Picker` that searches the backend as the user types and offers the first 20 matches. Except for files and releases, a picker also offers to create what was typed ("Create artist 'Robbie Nevil'"). Each picker owns its query, so its results stay typed.
   - `Picker` is generic over its option type, so an option can carry more than an id and a name. A `TagOption` also has the tag's type, its id within the type, and whether it's multiple. Its `id` is `type:id`, since ids repeat across types.
+  - An option with an `image` shows it before its name, or a placeholder when it's null. The artist and release pickers ask for one, aliasing the field as they alias the name: `image: picture { id }`, `image: cover { id }`.
   - `TagPicker` with `creatable` asks for the rest of a new tag in a dialog (`NewTagDialog`): its type, and single or multiple. Cancelling it creates nothing, since `onCreate` can return null.
   - `TagValuePicker` adds a value to a multi-value text tag: one that other releases already have, the most used first, or what was typed ("Add 'Funk'"). A single text value (`TagValueInput`) suggests the same values through a `<datalist>`.
 - **Ordered lists** (release artists, labels, formats, media, a track's artists and features) use `OrderedList`, whose order sets `position`. A track row uses the compact `ChipList`. File links use `FileLinksEditor`.

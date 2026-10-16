@@ -15,14 +15,14 @@ import type { TypedDocumentNode as DocumentNode } from '@graphql-typed-document-
  */
 type Documents = {
     "\n  query Folder($path: String!) {\n    folder(path: $path) {\n      path\n      absolutePath\n      parent\n      folders {\n        name\n        path\n        hasRegisteredFiles\n      }\n      files {\n        name\n        path\n        type\n        sizeBytes\n        file {\n          id\n        }\n      }\n    }\n  }\n": typeof types.FolderDocument,
-    "\n  query ArtistOptions($q: String, $perPage: Int!) {\n    artists(q: $q, perPage: $perPage, sort: \"name\") {\n      items {\n        id\n        name\n      }\n    }\n  }\n": typeof types.ArtistOptionsDocument,
+    "\n  query ArtistOptions($q: String, $perPage: Int!) {\n    artists(q: $q, perPage: $perPage, sort: \"name\") {\n      items {\n        id\n        name\n        image: picture {\n          id\n        }\n      }\n    }\n  }\n": typeof types.ArtistOptionsDocument,
     "\n  mutation CreateArtistOption($name: String!) {\n    createArtist(input: { name: $name }) {\n      id\n      name\n    }\n  }\n": typeof types.CreateArtistOptionDocument,
     "\n  query LabelOptions($q: String, $perPage: Int!) {\n    labels(q: $q, perPage: $perPage, sort: \"name\") {\n      items {\n        id\n        name\n      }\n    }\n  }\n": typeof types.LabelOptionsDocument,
     "\n  mutation CreateLabelOption($name: String!) {\n    createLabel(input: { name: $name }) {\n      id\n      name\n    }\n  }\n": typeof types.CreateLabelOptionDocument,
     "\n  query ListItemOptions($kind: ListKind!, $q: String, $perPage: Int!) {\n    listItems(kind: $kind, q: $q, perPage: $perPage, sort: \"name\") {\n      items {\n        id\n        name\n      }\n    }\n  }\n": typeof types.ListItemOptionsDocument,
     "\n  mutation CreateListItemOption($kind: ListKind!, $name: String!) {\n    createListItem(kind: $kind, name: $name) {\n      id\n      name\n    }\n  }\n": typeof types.CreateListItemOptionDocument,
     "\n  query CreditRoleOptions($q: String) {\n    creditRoles(q: $q)\n  }\n": typeof types.CreditRoleOptionsDocument,
-    "\n  query ReleaseOptions($q: String, $perPage: Int!) {\n    releases(q: $q, perPage: $perPage, sort: \"title\") {\n      items {\n        id\n        name: title\n      }\n    }\n  }\n": typeof types.ReleaseOptionsDocument,
+    "\n  query ReleaseOptions($q: String, $perPage: Int!) {\n    releases(q: $q, perPage: $perPage, sort: \"title\") {\n      items {\n        id\n        name: title\n        image: cover {\n          id\n        }\n      }\n    }\n  }\n": typeof types.ReleaseOptionsDocument,
     "\n  query FileOptions(\n    $q: String\n    $perPage: Int!\n    $type: FileType\n    $withoutTrack: Boolean\n  ) {\n    files(\n      q: $q\n      perPage: $perPage\n      type: $type\n      withoutTrack: $withoutTrack\n      sort: \"path\"\n    ) {\n      items {\n        id\n        name: path\n      }\n    }\n  }\n": typeof types.FileOptionsDocument,
     "\n  query TagOptions($q: String, $perPage: Int!) {\n    tags(q: $q, perPage: $perPage, sort: \"name\") {\n      items {\n        id\n        type\n        name\n        multiple\n      }\n    }\n  }\n": typeof types.TagOptionsDocument,
     "\n  query TagValueOptions($id: ID!, $q: String, $perPage: Int!) {\n    tag(type: text, id: $id) {\n      __typename\n      id\n      ... on TextTag {\n        values(q: $q, perPage: $perPage) {\n          items {\n            value\n          }\n        }\n      }\n    }\n  }\n": typeof types.TagValueOptionsDocument,
@@ -30,7 +30,7 @@ type Documents = {
     "\n  query ArtistForm($id: ID!) {\n    artist(id: $id) {\n      id\n      name\n      picture {\n        id\n        path\n      }\n      files {\n        note\n        file {\n          id\n          path\n        }\n      }\n    }\n  }\n": typeof types.ArtistFormDocument,
     "\n  mutation CreateArtist($input: ArtistInput!) {\n    createArtist(input: $input) {\n      id\n    }\n  }\n": typeof types.CreateArtistDocument,
     "\n  mutation UpdateArtist($id: ID!, $input: ArtistInput!) {\n    updateArtist(id: $id, input: $input) {\n      id\n      name\n    }\n  }\n": typeof types.UpdateArtistDocument,
-    "\n  query Artists($page: Int!, $perPage: Int!, $sort: String, $q: String) {\n    artists(page: $page, perPage: $perPage, sort: $sort, q: $q) {\n      total\n      items {\n        id\n        name\n        insertedAt\n        updatedAt\n      }\n    }\n  }\n": typeof types.ArtistsDocument,
+    "\n  query Artists($page: Int!, $perPage: Int!, $sort: String, $q: String) {\n    artists(page: $page, perPage: $perPage, sort: $sort, q: $q) {\n      total\n      items {\n        id\n        name\n        picture {\n          id\n        }\n        insertedAt\n        updatedAt\n      }\n    }\n  }\n": typeof types.ArtistsDocument,
     "\n  fragment ArtistHeader on Artist {\n    id\n    name\n    picture {\n      id\n    }\n    blockers\n    counts {\n      releases\n      appearances\n      credits\n      files\n    }\n  }\n": typeof types.ArtistHeaderFragmentDoc,
     "\n  mutation SetArtistPicture($id: ID!, $picture: FileRefInput!) {\n    setArtistPicture(id: $id, picture: $picture) {\n      ...ArtistHeader\n      picture {\n        id\n        name\n      }\n    }\n  }\n": typeof types.SetArtistPictureDocument,
     "\n  mutation DeleteArtist($id: ID!) {\n    deleteArtist(id: $id)\n  }\n": typeof types.DeleteArtistDocument,
@@ -98,14 +98,14 @@ type Documents = {
 };
 const documents: Documents = {
     "\n  query Folder($path: String!) {\n    folder(path: $path) {\n      path\n      absolutePath\n      parent\n      folders {\n        name\n        path\n        hasRegisteredFiles\n      }\n      files {\n        name\n        path\n        type\n        sizeBytes\n        file {\n          id\n        }\n      }\n    }\n  }\n": types.FolderDocument,
-    "\n  query ArtistOptions($q: String, $perPage: Int!) {\n    artists(q: $q, perPage: $perPage, sort: \"name\") {\n      items {\n        id\n        name\n      }\n    }\n  }\n": types.ArtistOptionsDocument,
+    "\n  query ArtistOptions($q: String, $perPage: Int!) {\n    artists(q: $q, perPage: $perPage, sort: \"name\") {\n      items {\n        id\n        name\n        image: picture {\n          id\n        }\n      }\n    }\n  }\n": types.ArtistOptionsDocument,
     "\n  mutation CreateArtistOption($name: String!) {\n    createArtist(input: { name: $name }) {\n      id\n      name\n    }\n  }\n": types.CreateArtistOptionDocument,
     "\n  query LabelOptions($q: String, $perPage: Int!) {\n    labels(q: $q, perPage: $perPage, sort: \"name\") {\n      items {\n        id\n        name\n      }\n    }\n  }\n": types.LabelOptionsDocument,
     "\n  mutation CreateLabelOption($name: String!) {\n    createLabel(input: { name: $name }) {\n      id\n      name\n    }\n  }\n": types.CreateLabelOptionDocument,
     "\n  query ListItemOptions($kind: ListKind!, $q: String, $perPage: Int!) {\n    listItems(kind: $kind, q: $q, perPage: $perPage, sort: \"name\") {\n      items {\n        id\n        name\n      }\n    }\n  }\n": types.ListItemOptionsDocument,
     "\n  mutation CreateListItemOption($kind: ListKind!, $name: String!) {\n    createListItem(kind: $kind, name: $name) {\n      id\n      name\n    }\n  }\n": types.CreateListItemOptionDocument,
     "\n  query CreditRoleOptions($q: String) {\n    creditRoles(q: $q)\n  }\n": types.CreditRoleOptionsDocument,
-    "\n  query ReleaseOptions($q: String, $perPage: Int!) {\n    releases(q: $q, perPage: $perPage, sort: \"title\") {\n      items {\n        id\n        name: title\n      }\n    }\n  }\n": types.ReleaseOptionsDocument,
+    "\n  query ReleaseOptions($q: String, $perPage: Int!) {\n    releases(q: $q, perPage: $perPage, sort: \"title\") {\n      items {\n        id\n        name: title\n        image: cover {\n          id\n        }\n      }\n    }\n  }\n": types.ReleaseOptionsDocument,
     "\n  query FileOptions(\n    $q: String\n    $perPage: Int!\n    $type: FileType\n    $withoutTrack: Boolean\n  ) {\n    files(\n      q: $q\n      perPage: $perPage\n      type: $type\n      withoutTrack: $withoutTrack\n      sort: \"path\"\n    ) {\n      items {\n        id\n        name: path\n      }\n    }\n  }\n": types.FileOptionsDocument,
     "\n  query TagOptions($q: String, $perPage: Int!) {\n    tags(q: $q, perPage: $perPage, sort: \"name\") {\n      items {\n        id\n        type\n        name\n        multiple\n      }\n    }\n  }\n": types.TagOptionsDocument,
     "\n  query TagValueOptions($id: ID!, $q: String, $perPage: Int!) {\n    tag(type: text, id: $id) {\n      __typename\n      id\n      ... on TextTag {\n        values(q: $q, perPage: $perPage) {\n          items {\n            value\n          }\n        }\n      }\n    }\n  }\n": types.TagValueOptionsDocument,
@@ -113,7 +113,7 @@ const documents: Documents = {
     "\n  query ArtistForm($id: ID!) {\n    artist(id: $id) {\n      id\n      name\n      picture {\n        id\n        path\n      }\n      files {\n        note\n        file {\n          id\n          path\n        }\n      }\n    }\n  }\n": types.ArtistFormDocument,
     "\n  mutation CreateArtist($input: ArtistInput!) {\n    createArtist(input: $input) {\n      id\n    }\n  }\n": types.CreateArtistDocument,
     "\n  mutation UpdateArtist($id: ID!, $input: ArtistInput!) {\n    updateArtist(id: $id, input: $input) {\n      id\n      name\n    }\n  }\n": types.UpdateArtistDocument,
-    "\n  query Artists($page: Int!, $perPage: Int!, $sort: String, $q: String) {\n    artists(page: $page, perPage: $perPage, sort: $sort, q: $q) {\n      total\n      items {\n        id\n        name\n        insertedAt\n        updatedAt\n      }\n    }\n  }\n": types.ArtistsDocument,
+    "\n  query Artists($page: Int!, $perPage: Int!, $sort: String, $q: String) {\n    artists(page: $page, perPage: $perPage, sort: $sort, q: $q) {\n      total\n      items {\n        id\n        name\n        picture {\n          id\n        }\n        insertedAt\n        updatedAt\n      }\n    }\n  }\n": types.ArtistsDocument,
     "\n  fragment ArtistHeader on Artist {\n    id\n    name\n    picture {\n      id\n    }\n    blockers\n    counts {\n      releases\n      appearances\n      credits\n      files\n    }\n  }\n": types.ArtistHeaderFragmentDoc,
     "\n  mutation SetArtistPicture($id: ID!, $picture: FileRefInput!) {\n    setArtistPicture(id: $id, picture: $picture) {\n      ...ArtistHeader\n      picture {\n        id\n        name\n      }\n    }\n  }\n": types.SetArtistPictureDocument,
     "\n  mutation DeleteArtist($id: ID!) {\n    deleteArtist(id: $id)\n  }\n": types.DeleteArtistDocument,
@@ -201,7 +201,7 @@ export function graphql(source: "\n  query Folder($path: String!) {\n    folder(
 /**
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */
-export function graphql(source: "\n  query ArtistOptions($q: String, $perPage: Int!) {\n    artists(q: $q, perPage: $perPage, sort: \"name\") {\n      items {\n        id\n        name\n      }\n    }\n  }\n"): (typeof documents)["\n  query ArtistOptions($q: String, $perPage: Int!) {\n    artists(q: $q, perPage: $perPage, sort: \"name\") {\n      items {\n        id\n        name\n      }\n    }\n  }\n"];
+export function graphql(source: "\n  query ArtistOptions($q: String, $perPage: Int!) {\n    artists(q: $q, perPage: $perPage, sort: \"name\") {\n      items {\n        id\n        name\n        image: picture {\n          id\n        }\n      }\n    }\n  }\n"): (typeof documents)["\n  query ArtistOptions($q: String, $perPage: Int!) {\n    artists(q: $q, perPage: $perPage, sort: \"name\") {\n      items {\n        id\n        name\n        image: picture {\n          id\n        }\n      }\n    }\n  }\n"];
 /**
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */
@@ -229,7 +229,7 @@ export function graphql(source: "\n  query CreditRoleOptions($q: String) {\n    
 /**
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */
-export function graphql(source: "\n  query ReleaseOptions($q: String, $perPage: Int!) {\n    releases(q: $q, perPage: $perPage, sort: \"title\") {\n      items {\n        id\n        name: title\n      }\n    }\n  }\n"): (typeof documents)["\n  query ReleaseOptions($q: String, $perPage: Int!) {\n    releases(q: $q, perPage: $perPage, sort: \"title\") {\n      items {\n        id\n        name: title\n      }\n    }\n  }\n"];
+export function graphql(source: "\n  query ReleaseOptions($q: String, $perPage: Int!) {\n    releases(q: $q, perPage: $perPage, sort: \"title\") {\n      items {\n        id\n        name: title\n        image: cover {\n          id\n        }\n      }\n    }\n  }\n"): (typeof documents)["\n  query ReleaseOptions($q: String, $perPage: Int!) {\n    releases(q: $q, perPage: $perPage, sort: \"title\") {\n      items {\n        id\n        name: title\n        image: cover {\n          id\n        }\n      }\n    }\n  }\n"];
 /**
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */
@@ -261,7 +261,7 @@ export function graphql(source: "\n  mutation UpdateArtist($id: ID!, $input: Art
 /**
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */
-export function graphql(source: "\n  query Artists($page: Int!, $perPage: Int!, $sort: String, $q: String) {\n    artists(page: $page, perPage: $perPage, sort: $sort, q: $q) {\n      total\n      items {\n        id\n        name\n        insertedAt\n        updatedAt\n      }\n    }\n  }\n"): (typeof documents)["\n  query Artists($page: Int!, $perPage: Int!, $sort: String, $q: String) {\n    artists(page: $page, perPage: $perPage, sort: $sort, q: $q) {\n      total\n      items {\n        id\n        name\n        insertedAt\n        updatedAt\n      }\n    }\n  }\n"];
+export function graphql(source: "\n  query Artists($page: Int!, $perPage: Int!, $sort: String, $q: String) {\n    artists(page: $page, perPage: $perPage, sort: $sort, q: $q) {\n      total\n      items {\n        id\n        name\n        picture {\n          id\n        }\n        insertedAt\n        updatedAt\n      }\n    }\n  }\n"): (typeof documents)["\n  query Artists($page: Int!, $perPage: Int!, $sort: String, $q: String) {\n    artists(page: $page, perPage: $perPage, sort: $sort, q: $q) {\n      total\n      items {\n        id\n        name\n        picture {\n          id\n        }\n        insertedAt\n        updatedAt\n      }\n    }\n  }\n"];
 /**
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */

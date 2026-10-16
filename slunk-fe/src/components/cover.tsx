@@ -4,7 +4,9 @@ import { cn } from "@/lib/utils"
 
 /**
  * A cover or picture: the original image, loaded lazily (design §7.3), or a
- * placeholder.
+ * placeholder. It takes the size in `className`, and only that: the
+ * `max-width: 100%` Tailwind gives images lets a table that's too wide, like
+ * the release list, squeeze an image's column to nothing.
  */
 export function Cover({
   file,
@@ -32,7 +34,10 @@ export function Cover({
       src={`/raw/files/${file.id}`}
       alt={alt}
       loading="lazy"
-      className={cn("aspect-square bg-muted object-cover", className)}
+      className={cn(
+        "aspect-square max-w-none bg-muted object-cover",
+        className
+      )}
     />
   )
 }
