@@ -143,7 +143,7 @@ function ArtistFrame({
               <CoverChooser
                 file={artist.picture}
                 alt={artist.name}
-                className="size-24"
+                className="size-64"
                 noun="picture"
                 onChoose={(picture) =>
                   setPicture({ variables: { id, picture } })
@@ -347,7 +347,7 @@ export function ArtistAppearances() {
               <TableRow key={release.id}>
                 <TableCell>
                   <Link to={`/releases/${release.id}`}>
-                    <Cover file={release.cover} alt="" className="size-10" />
+                    <Cover file={release.cover} alt="" className="size-16" />
                   </Link>
                 </TableCell>
                 <TableCell className="whitespace-normal">

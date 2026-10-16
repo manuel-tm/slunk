@@ -153,7 +153,7 @@ export function ReleaseTable({
                 )}
                 {column === "cover" && (
                   <Link to={`/releases/${release.id}`}>
-                    <Cover file={release.cover} alt="" className="size-10" />
+                    <Cover file={release.cover} alt="" className="size-16" />
                   </Link>
                 )}
                 {column === "title" && (

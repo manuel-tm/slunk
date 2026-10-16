@@ -13,6 +13,7 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  DialogTrigger,
 } from "@/components/ui/dialog"
 import {
   Tooltip,
@@ -52,8 +53,9 @@ export function commonFolder(paths: string[]): string | null {
 }
 
 /**
- * A cover, picture or logo. While there's none, the placeholder is a button
- * that opens `ChooseImageDialog`, so it's set without leaving the page.
+ * A cover, picture or logo. Clicking it shows it at full size, up to the
+ * window's. While there's none, the placeholder is a button that opens
+ * `ChooseImageDialog`, so it's set without leaving the page.
  */
 export function CoverChooser({
   file,
@@ -73,7 +75,28 @@ export function CoverChooser({
   onChoose: (ref: FileRefInput) => Promise<unknown>
 }) {
   const [open, setOpen] = useState(false)
-  if (file) return <Cover file={file} alt={alt} className={className} />
+  if (file) {
+    return (
+      <Dialog>
+        <DialogTrigger
+          aria-label={`View ${alt} at full size`}
+          className="cursor-zoom-in outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <Cover file={file} alt={alt} className={className} />
+        </DialogTrigger>
+        {/* Sized by the image, in viewport units: a percentage would let the
+            centered popup shrink it to half the window */}
+        <DialogContent className="w-auto sm:max-w-[calc(100%-2rem)]">
+          <DialogTitle className="pr-6">{alt}</DialogTitle>
+          <img
+            src={`/raw/files/${file.id}`}
+            alt={alt}
+            className="max-h-[calc(100vh-8rem)] max-w-[calc(100vw-4rem)]"
+          />
+        </DialogContent>
+      </Dialog>
+    )
+  }
 
   return (
     <>

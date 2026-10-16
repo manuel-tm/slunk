@@ -221,11 +221,11 @@ function Heading({ release }: { release: Release }) {
 
   return (
     <div className="flex flex-wrap gap-6">
-      <div className="flex w-48 flex-col gap-1">
+      <div className="flex w-64 flex-col gap-1">
         <CoverChooser
           file={release.cover}
           alt={`${release.title} cover`}
-          className="w-48"
+          className="size-64"
           noun="cover"
           // A cover usually sits with the tracks
           folder={commonFolder(release.tracks.map((track) => track.file.path))}

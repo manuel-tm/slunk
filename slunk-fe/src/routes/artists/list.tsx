@@ -77,7 +77,7 @@ export function ArtistList() {
               <TableCell className="tabular-nums">{artist.id}</TableCell>
               <TableCell>
                 <Link to={`/artists/${artist.id}`}>
-                  <Cover file={artist.picture} alt="" className="size-10" />
+                  <Cover file={artist.picture} alt="" className="size-16" />
                 </Link>
               </TableCell>
               <TableCell>

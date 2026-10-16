@@ -88,8 +88,9 @@ slunk-fe/
       names.tsx            names that link to their pages: "A, B, C"
       credit-lines.tsx     credit lines, as "Engineer – A, B"
       cover.tsx            a cover or picture, or a placeholder
-      cover-chooser.tsx    an empty cover, picture or logo that opens a
-                           dialog to choose one from the disk
+      cover-chooser.tsx    a cover, picture or logo that opens full size,
+                           or, while empty, a dialog to choose one from the
+                           disk
       file-gallery.tsx     a primary image, then linked files
       folder-browser.tsx   browses the disk from the database's folder, by
                            links or in place, and can pick a file
@@ -148,7 +149,7 @@ Lists follow design §7.2:
 - **Size:** lists ask for 50 rows a page.
 - **Frame:** `ListLayout` is a list page's frame: the header and its New button, the search box, filters, the pager, then the table, or what's there while it loads, fails or is empty.
 - **The release table** (`ReleaseTable`) is shared by the release list and the label and artist pages, each with its own columns (design §7.6). With `selection`, each row gets a checkbox, and the header's selects the page.
-- **Pictures:** rows of releases and artists start with a small cover or picture (`Cover`), linking to its page: the release table, an artist's appearances, and the artist list, whose columns are id, picture, name, added, updated. They're the original images, loaded lazily (design §7.3).
+- **Pictures:** rows of releases and artists start with their cover or picture (`Cover`, 64px: `size-16`), linking to its page: the release table, an artist's appearances, and the artist list, whose columns are id, picture, name, added, updated. They're the original images, loaded lazily (design §7.3).
   - `Cover` takes exactly the size its `className` gives it. It drops the `max-width: 100%` Tailwind gives every image, which lets a table too wide for the page, like the release list, squeeze an image's column to nothing. So a `Cover` always gets a width, like `size-10` or `w-full`.
 - **The tags list** (`/tags`) is the exception to the frame: it shows a table per type (design §7.8), each with every tag of that type, up to 200, and a note to search when there are more. The search box and the name sort apply to all three.
 
@@ -173,6 +174,8 @@ Lists follow design §7.2:
 - **A dialog with its own form,** like `NewTagDialog`, calls `stopPropagation()` on submit. The dialog is portaled out of the page's form in the DOM, but React still bubbles the submit event to it, which would save the page's form too.
 
 ### Choosing an image
+
+The release and artist pages show the cover or picture at 256px (`size-64`), and the label page its logo at 96px (`size-24`). Clicking one shows it in a dialog at its full size, up to the window's.
 
 On the release, artist and label pages, an empty cover, picture or logo is a button (`CoverChooser`). It opens `ChooseImageDialog`, so the image is set without leaving the page:
 - **Browsing** is the `FolderBrowser`, in place: with `onOpen` instead of `linkTo`, a folder opens inside the dialog instead of changing the URL. Images can be picked, and other files are faded.
