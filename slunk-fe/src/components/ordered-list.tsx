@@ -3,6 +3,7 @@ import { type ReactNode, useState } from "react"
 
 import type { Option, PickerProps } from "@/components/picker"
 import { Button } from "@/components/ui/button"
+import { textProps } from "@/lib/languages"
 
 /** Moves an item in a list by `by` places. */
 export function move<T>(items: T[], index: number, by: number): T[] {
@@ -84,7 +85,9 @@ export function OrderedList({
           key={item.id}
           className="flex items-center gap-2 border px-2 py-1 text-xs"
         >
-          <span className="flex-1">{item.name}</span>
+          <span className="flex-1" {...textProps(item.lang)}>
+            {item.name}
+          </span>
           <RowActions
             label={item.name}
             index={index}

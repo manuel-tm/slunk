@@ -2,6 +2,7 @@
 // and labels, tracks, and credits (design §6).
 import { basename, dirname } from "node:path"
 import type {
+  AlternateNameValues,
   CatalogStore,
   CreditOwner,
   DiscTitle,
@@ -11,11 +12,13 @@ import type {
   TrackArtist,
 } from "./catalog/repository.ts"
 import { formatDate, type ParsedDate, parseDate } from "./dates.ts"
+import { languageTag } from "./languages.ts"
 import type { Media } from "./media.ts"
 import type { FileRecord, LinkOwner } from "./media/repository.ts"
 import { type ListArgs, pagingOf, searchOf, sortOf } from "./paging.ts"
 import type { Tagging, TagValuesInput } from "./tagging.ts"
 import type { TagFilter } from "./tagging/repository.ts"
+import { cleanOrNull, cleanText } from "./text.ts"
 
 export type Catalog = ReturnType<typeof createCatalog>
 
@@ -26,6 +29,37 @@ export type FileLinkInput = FileRef & { note?: string | null }
 
 /** A credit line: a role as printed, and its artists in order. */
 export type CreditInput = { role: string; artistIds: number[] }
+
+/** An alternate name (3_alternate_names.md §6). With an id, one the owner has. */
+export type AlternateNameInput = {
+  id?: number | null
+  name: string
+  /** A BCP 47 tag. Blank means unknown. */
+  language?: string | null
+  /** Artists only */
+  realName?: boolean | null
+  note?: string | null
+}
+
+export type ArtistInput = {
+  name: string
+  nameLanguage?: string | null
+  pictureId?: number | null
+  files: FileLinkInput[]
+  /** Replaces the alternate names. Left out, they stay as they are. */
+  alternateNames?: AlternateNameInput[] | null
+}
+
+export type LabelInput = {
+  name: string
+  nameLanguage?: string | null
+  pictureId?: number | null
+  /** Replaces the alternate names. Left out, they stay as they are. */
+  alternateNames?: AlternateNameInput[] | null
+}
+
+/** Artists and labels both have alternate names. */
+type NamedKind = "artist" | "label"
 
 export type ReleaseInput = {
   title: string
@@ -113,7 +147,7 @@ export function createCatalog({
       id,
       links.map((link) => ({
         fileId: refId(link, registered),
-        note: link.note?.trim() || null,
+        note: cleanOrNull(link.note),
       }))
     )
   }
@@ -156,11 +190,11 @@ export function createCatalog({
   function releaseValues(input: ReleaseInput) {
     const released = input.released?.trim()
     return {
-      title: input.title.trim(),
+      title: cleanText(input.title),
       ...(released
         ? releaseDate(parseDate(released))
         : { releaseDate: null, releaseDatePrecision: null }),
-      catalogNumber: input.catalogNumber?.trim() || null,
+      catalogNumber: cleanOrNull(input.catalogNumber),
       variousArtists: input.variousArtists,
     }
   }
@@ -187,6 +221,34 @@ export function createCatalog({
   const notFound = (what: string, id: number) =>
     new Error(`There's no ${what} ${id}`)
 
+  /**
+   * Saves an artist's or label's alternate names, after its main name
+   * (3_alternate_names.md §6). Left out, they stay as they are, and the main
+   * name still can't be one of them.
+   */
+  async function setAlternateNames(
+    tx: CatalogStore,
+    what: NamedKind,
+    id: number,
+    main: string,
+    names: AlternateNameInput[] | null | undefined
+  ) {
+    const repository = what === "artist" ? tx.artists : tx.labels
+    if (names) {
+      await repository.setAlternateNames(
+        id,
+        alternateNameRows(what, main, names)
+      )
+      return
+    }
+    const existing = (await repository.alternateNamesOf([id])).get(id) ?? []
+    if (existing.some((name) => name.name === main && !name.realName)) {
+      throw new Error(
+        `"${main}" is one of the ${what}'s alternate names. Remove it from them first.`
+      )
+    }
+  }
+
   /** What keeps an artist from being deleted. */
   async function artistBlockers(id: number) {
     const { releases, tracks, credits } = await store.artists.usage(id)
@@ -211,9 +273,9 @@ export function createCatalog({
       store.lists.getMany(kind, ids),
     listItemUses: (kind: ListKind, id: number) => store.lists.uses(kind, id),
     createListItem: (kind: ListKind, name: string) =>
-      store.lists.insert(kind, name.trim()),
+      store.lists.insert(kind, cleanText(name)),
     async renameListItem(kind: ListKind, id: number, name: string) {
-      const item = await store.lists.update(kind, id, name.trim())
+      const item = await store.lists.update(kind, id, cleanText(name))
       if (!item) throw notFound(LIST_NAMES[kind], id)
       return item
     },
@@ -243,39 +305,46 @@ export function createCatalog({
     artistsByIds: (ids: readonly number[]) => store.artists.getMany(ids),
     findArtistsByNames: (names: string[]) => store.artists.findByNames(names),
 
-    async createArtist(input: {
-      name: string
-      pictureId?: number | null
-      files: FileLinkInput[]
-    }) {
+    async createArtist(input: ArtistInput) {
+      const values = namedValues(input)
       const prepared = await prepareRefs(input.files)
       return store.transaction(async (tx) => {
         const registered = await media.insertPrepared(tx, prepared)
-        const artist = await tx.artists.insert({
-          name: input.name.trim(),
-          picture: input.pictureId ?? null,
-        })
+        const artist = await tx.artists.insert(values)
+        await setAlternateNames(
+          tx,
+          "artist",
+          artist.id,
+          artist.name,
+          input.alternateNames
+        )
         await setFileLinks(tx, "artist", artist.id, input.files, registered)
         return artist
       })
     },
 
-    async updateArtist(
-      id: number,
-      input: { name: string; pictureId?: number | null; files: FileLinkInput[] }
-    ) {
+    async updateArtist(id: number, input: ArtistInput) {
+      const values = namedValues(input)
       const prepared = await prepareRefs(input.files)
       return store.transaction(async (tx) => {
         const registered = await media.insertPrepared(tx, prepared)
-        const artist = await tx.artists.update(id, {
-          name: input.name.trim(),
-          picture: input.pictureId ?? null,
-        })
+        const artist = await tx.artists.update(id, values)
         if (!artist) throw notFound("artist", id)
+        await setAlternateNames(
+          tx,
+          "artist",
+          id,
+          artist.name,
+          input.alternateNames
+        )
         await setFileLinks(tx, "artist", id, input.files, registered)
         return artist
       })
     },
+
+    /** Alternate names by artist, in order. */
+    artistNamesOf: (ids: readonly number[]) =>
+      store.artists.alternateNamesOf(ids),
 
     /** Sets only an artist's picture, registering a path. */
     setArtistPicture: (id: number, picture: FileRef) =>
@@ -320,22 +389,41 @@ export function createCatalog({
     getLabel: (id: number) => store.labels.get(id),
     labelsByIds: (ids: readonly number[]) => store.labels.getMany(ids),
     labelReleaseCount: (id: number) => store.labels.releaseCount(id),
-    createLabel: (input: { name: string; pictureId?: number | null }) =>
-      store.labels.insert({
-        name: input.name.trim(),
-        picture: input.pictureId ?? null,
-      }),
-    async updateLabel(
-      id: number,
-      input: { name: string; pictureId?: number | null }
-    ) {
-      const label = await store.labels.update(id, {
-        name: input.name.trim(),
-        picture: input.pictureId ?? null,
+    async createLabel(input: LabelInput) {
+      const values = namedValues(input)
+      return store.transaction(async (tx) => {
+        const label = await tx.labels.insert(values)
+        await setAlternateNames(
+          tx,
+          "label",
+          label.id,
+          label.name,
+          input.alternateNames
+        )
+        return label
       })
-      if (!label) throw notFound("label", id)
-      return label
     },
+    async updateLabel(id: number, input: LabelInput) {
+      const values = namedValues(input)
+      return store.transaction(async (tx) => {
+        const label = await tx.labels.update(id, values)
+        if (!label) throw notFound("label", id)
+        await setAlternateNames(
+          tx,
+          "label",
+          id,
+          label.name,
+          input.alternateNames
+        )
+        return label
+      })
+    },
+    /** Alternate names by label, in order. */
+    labelNamesOf: (ids: readonly number[]) =>
+      store.labels.alternateNamesOf(ids),
+
+    /** Language tags in use on names, the most used first, for suggestions. */
+    languages: () => store.stats.languages(),
     /** Sets only a label's logo, registering a path. */
     setLabelPicture: (id: number, picture: FileRef) =>
       setImage("label", id, picture, (tx, fileId) =>
@@ -458,7 +546,7 @@ export function createCatalog({
           const values = {
             cdNumber: row.cdNumber,
             trackNumber: row.trackNumber,
-            title: row.title.trim(),
+            title: cleanText(row.title),
           }
           let trackId = row.id
           if (trackId != null) {
@@ -559,7 +647,7 @@ export function createCatalog({
       return store.transaction(async (tx) => {
         const registered = await media.insertPrepared(tx, prepared)
         const track = await tx.tracks.insert({
-          title: input.title.trim(),
+          title: cleanText(input.title),
           cdNumber: input.cdNumber,
           trackNumber: input.trackNumber,
           releaseId: input.releaseId,
@@ -591,7 +679,7 @@ export function createCatalog({
       return store.transaction(async (tx) => {
         const registered = await media.insertPrepared(tx, prepared)
         const track = await tx.tracks.update(id, {
-          title: input.title.trim(),
+          title: cleanText(input.title),
           cdNumber: input.cdNumber,
           trackNumber: input.trackNumber,
           releaseId: input.releaseId,
@@ -756,6 +844,53 @@ function fromFileName(path: string, folder: string) {
   }
 }
 
+/** An artist's or label's own columns, as they're saved. */
+function namedValues(input: {
+  name: string
+  nameLanguage?: string | null
+  pictureId?: number | null
+}) {
+  return {
+    name: cleanText(input.name),
+    nameLanguage: languageTag(input.nameLanguage),
+    picture: input.pictureId ?? null,
+  }
+}
+
+/**
+ * Alternate names as they're saved (3_alternate_names.md §6): cleaned, a
+ * blank one left out, and languages in canonical form. Refuses a name given
+ * twice, and one that's the main name, unless it's a real name: an artist who
+ * performs under their real name can still record it. Labels have no real
+ * names. Names compare exactly, case included, so "ALIKA" isn't "Alika".
+ */
+function alternateNameRows(
+  what: NamedKind,
+  main: string,
+  names: AlternateNameInput[]
+): AlternateNameValues[] {
+  const seen = new Set<string>()
+  return names.flatMap((input) => {
+    const name = cleanText(input.name)
+    if (!name) return []
+    const realName = what === "artist" && Boolean(input.realName)
+    if (seen.has(name)) throw new Error(`"${name}" is listed twice`)
+    seen.add(name)
+    if (name === main && !realName) {
+      throw new Error(`"${name}" is already the ${what}'s main name`)
+    }
+    return [
+      {
+        id: input.id ?? null,
+        name,
+        language: languageTag(input.language),
+        realName,
+        note: cleanOrNull(input.note),
+      },
+    ]
+  })
+}
+
 function releaseDate({ epoch, precision }: ParsedDate) {
   return { releaseDate: epoch, releaseDatePrecision: precision }
 }
@@ -792,7 +927,7 @@ function unique(ids: number[]): number[] {
 function creditLines(credits: CreditInput[]): CreditInput[] {
   const roles = new Set<string>()
   return credits.map(({ role, artistIds }) => {
-    const trimmed = role.trim()
+    const trimmed = cleanText(role)
     if (!trimmed) throw new Error("A credit needs a role")
     if (artistIds.length === 0) {
       throw new Error(`The ${trimmed} credit needs an artist`)
@@ -815,7 +950,7 @@ function creditLines(credits: CreditInput[]): CreditInput[] {
 function discTitleRows(titles: DiscTitle[]): DiscTitle[] {
   const discs = new Set<number>()
   return titles.flatMap(({ cdNumber, title }) => {
-    const trimmed = title.trim()
+    const trimmed = cleanText(title)
     if (!trimmed) return []
     if (discs.has(cdNumber)) throw new Error(`Disc ${cdNumber} has two titles`)
     discs.add(cdNumber)

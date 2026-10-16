@@ -26,6 +26,8 @@ const config: CodegenConfig = {
           FileLink: `${MEDIA}#FileLink`,
           Artist: `${CATALOG}#Artist`,
           Label: `${CATALOG}#Label`,
+          ArtistName: `${CATALOG}#AlternateName`,
+          LabelName: `${CATALOG}#AlternateName`,
           Release: `${CATALOG}#Release`,
           Track: `${CATALOG}#Track`,
           Credit: `${CATALOG}#Credit`,

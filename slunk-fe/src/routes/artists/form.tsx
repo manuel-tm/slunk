@@ -2,21 +2,35 @@ import { useMutation, useQuery } from "@apollo/client/react"
 import { useState } from "react"
 import { useNavigate, useParams } from "react-router"
 
+import {
+  type AlternateNameRow,
+  alternateNameRow,
+  AlternateNamesEditor,
+  alternateNamesValid,
+  artistNamesInput,
+} from "@/components/alternate-names-editor"
 import { ButtonLink } from "@/components/button-link"
 import {
   type FileLinkRow,
   FileLinksEditor,
   fileLinksInput,
 } from "@/components/file-links-editor"
+import { LanguagePicker } from "@/components/language-picker"
 import { PageHeader } from "@/components/page-header"
 import type { Option } from "@/components/picker"
 import { FilePicker } from "@/components/pickers"
 import { QueryError } from "@/components/query-error"
 import { Button } from "@/components/ui/button"
-import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
+import {
+  Field,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { graphql } from "@/gql"
+import { textProps } from "@/lib/languages"
 import { NotFound } from "@/routes/not-found"
 
 const ArtistFormQuery = graphql(`
@@ -24,6 +38,14 @@ const ArtistFormQuery = graphql(`
     artist(id: $id) {
       id
       name
+      nameLanguage
+      alternateNames {
+        id
+        name
+        language
+        realName
+        note
+      }
       picture {
         id
         path
@@ -52,6 +74,14 @@ const UpdateArtist = graphql(`
     updateArtist(id: $id, input: $input) {
       id
       name
+      nameLanguage
+      alternateNames {
+        id
+        name
+        language
+        realName
+        note
+      }
     }
   }
 `)
@@ -76,6 +106,7 @@ export function ArtistForm() {
             ? [
                 {
                   label: artist ? `${artist.name} (${artist.id})` : id,
+                  lang: artist?.nameLanguage,
                   to: `/artists/${id}`,
                 },
                 { label: "Update" },
@@ -83,7 +114,7 @@ export function ArtistForm() {
             : [{ label: "New" }]),
         ]}
       />
-      <div className="max-w-2xl p-4">
+      <div className="max-w-4xl p-4">
         {error ? (
           <QueryError error={error} title="Can't load the artist" />
         ) : id && !artist ? (
@@ -92,6 +123,8 @@ export function ArtistForm() {
           <Form
             id={id}
             initialName={artist?.name ?? ""}
+            initialLanguage={artist?.nameLanguage ?? null}
+            initialNames={(artist?.alternateNames ?? []).map(alternateNameRow)}
             initialPicture={
               artist?.picture
                 ? { id: artist.picture.id, name: artist.picture.path }
@@ -111,16 +144,22 @@ export function ArtistForm() {
 function Form({
   id,
   initialName,
+  initialLanguage,
+  initialNames,
   initialPicture,
   initialLinks,
 }: {
   id?: string
   initialName: string
+  initialLanguage: string | null
+  initialNames: AlternateNameRow[]
   initialPicture: Option | null
   initialLinks: FileLinkRow[]
 }) {
   const navigate = useNavigate()
   const [name, setName] = useState(initialName)
+  const [nameLanguage, setNameLanguage] = useState(initialLanguage)
+  const [names, setNames] = useState(initialNames)
   const [picture, setPicture] = useState(initialPicture)
   const [links, setLinks] = useState(initialLinks)
   const [create, created] = useMutation(CreateArtist)
@@ -133,6 +172,8 @@ function Form({
         event.preventDefault()
         const input = {
           name,
+          nameLanguage,
+          alternateNames: artistNamesInput(names),
           pictureId: picture?.id ?? null,
           files: fileLinksInput(links),
         }
@@ -150,12 +191,33 @@ function Form({
         {error && <QueryError error={error} title="Can't save" />}
         <Field>
           <FieldLabel htmlFor="name">Name</FieldLabel>
-          <Input
-            id="name"
-            value={name}
-            required
-            onChange={(e) => setName(e.target.value)}
+          <div className="grid grid-cols-[1fr_14rem] gap-2">
+            <Input
+              id="name"
+              value={name}
+              required
+              {...textProps(nameLanguage)}
+              onChange={(e) => setName(e.target.value)}
+            />
+            <LanguagePicker
+              aria-label="Language of the name"
+              value={nameLanguage}
+              onChange={setNameLanguage}
+            />
+          </div>
+        </Field>
+        <Field>
+          <FieldLabel>Alternate names</FieldLabel>
+          <AlternateNamesEditor
+            main={name}
+            names={names}
+            onChange={setNames}
+            realNames
           />
+          <FieldDescription>
+            Other spellings (ALIKA), initials (R. Fukui), names in other scripts
+            (福居良) and real names. Searching finds the artist by any of them.
+          </FieldDescription>
         </Field>
         <Field>
           <FieldLabel htmlFor="picture">Picture</FieldLabel>
@@ -171,7 +233,14 @@ function Form({
           <FileLinksEditor links={links} onChange={setLinks} />
         </Field>
         <div className="flex gap-2">
-          <Button type="submit" disabled={created.loading || updated.loading}>
+          <Button
+            type="submit"
+            disabled={
+              created.loading ||
+              updated.loading ||
+              !alternateNamesValid(name, names, true)
+            }
+          >
             Save
           </Button>
           <ButtonLink variant="outline" to={id ? `/artists/${id}` : "/artists"}>

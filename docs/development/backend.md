@@ -2,11 +2,11 @@
 
 > Keep this page up to date: any change to the backend's stack, structure, scripts or conventions updates it in the same change.
 
-The backend implements the whole base design ([1_introduction.md](../design/1_introduction.md), phases 0 to 4), with credits as lines from phase 0 of [2_credits.md](../design/2_credits.md):
+The backend implements the whole base design ([1_introduction.md](../design/1_introduction.md), phases 0 to 4), with credits as lines from phase 0 of [2_credits.md](../design/2_credits.md), and alternate names from phase 0 of [3_alternate_names.md](../design/3_alternate_names.md):
 - the database connection, the migration runner with backup retention, and the migrations;
 - a GraphQL server with a `health` query;
 - the media context: registering files, browsing the library on disk, serving the files' bytes, and file links;
-- the catalog context: artists, labels, releases with their formats, media and labels, tracks, disc titles, credits, and suggestions for importing a folder;
+- the catalog context: artists and labels with their alternate names, releases with their formats, media and labels, tracks, disc titles, credits, and suggestions for importing a folder;
 - the tagging context: tag definitions, their values on releases and tracks, the lists' tag filters, and bulk edits;
 - the library check: what changed on disk since files were registered, and gaps in the catalog.
 
@@ -44,6 +44,8 @@ slunk-be/
     slunk/                  domain contexts (Phoenix: lib/slunk)
       paging.ts             list arguments: page, sort, search
       dates.ts              dates as typed: "2006", "2006-01", "2006-01-10"
+      text.ts               text as it's saved: NFC, trimmed
+      languages.ts          language tags as they're saved: canonical BCP 47
       media.ts              the media context: files, file links, the library
       media/
         audio.ts            reading durations and embedded tags (read-only)
@@ -123,7 +125,7 @@ Repositories turn rows into the context's own types: `snake_case` columns become
 
 When one context writes inside another's transaction, it takes the transaction's repositories rather than its own: `media.insertPrepared(tx, …)` and `tagging.setTagsWith(tx, …)` do. A context's own store isn't bound to the transaction, and SQLite has one connection, so starting a second transaction from it would wait forever.
 
-**Text** is trimmed before it's saved, so " Rock " is saved as "Rock". The database's CHECKs still reject anything left empty.
+**Text** is normalized to Unicode NFC and trimmed before it's saved (`text.ts`), so " Rock " is saved as "Rock". The same characters can come in two forms, "é" as one code point or as "e" and an accent, and NFC makes them one, so either finds the other. NFKC isn't used, since it would rewrite what's printed ("E=MC²" would become "E=MC2"). Searches are normalized the same way. Paths aren't text: they're kept as they are on disk. The database's CHECKs still reject anything left empty.
 
 **Errors** meant for the user are plain `Error`s with a readable message ("There's no file at …", "The release still has 3 tracks. Delete them first."). The triggers' messages pass through as they are. `slunk_web/errors.ts` rewrites SQLite's constraint errors into words a form can show: `UNIQUE constraint failed: tracks.file_id` becomes "That file is already a track's audio". GraphQL returns the message as is.
 
@@ -157,6 +159,13 @@ The path is under `/raw` so it can't collide with the frontend's `/files` pages 
 `src/slunk/catalog.ts` holds what the user catalogs: artists, labels, releases, tracks, disc titles, credits, and the two lists the user manages (release formats, release media).
 
 - **Lists** share one repository and one set of functions (`listItems`, `createListItem`, …), with a `kind`. Names are unique ignoring case.
+- **Alternate names** ([3_alternate_names.md §4.2](../design/3_alternate_names.md#42-design-decisions)) are other names an artist or label goes by: other spellings ("ALIKA"), initials ("R. Fukui"), names in other scripts ("福居良"). An artist's can be real names.
+  - They're saved with their artist or label, as an ordered list (`alternateNames`): a name with an id keeps its row, one without is added, and names left out are deleted. Left out entirely, they stay as they are.
+  - Names are cleaned like other text, and a blank one is left out. They compare exactly, case included, so "ALIKA" isn't "Alika".
+  - A save is refused, with a message, when a name is given twice, or when one is the main name, unless it's a real name. A rename that leaves the list out can't make the main name one of the alternate names either.
+  - Names can trade places between rows in one save. The repository first moves renamed rows clear of the unique (owner, name) index, as tracks are renumbered.
+  - The artist and label lists' search, and so their pickers, match the main name or any alternate name.
+- **Languages** of names (`nameLanguage`, and each alternate name's `language`) are BCP 47 tags, stored in canonical form by `languages.ts`: "JA-latn" becomes `ja-Latn`. A blank one is null, which means unknown. A malformed tag (`ja_JP`), one whose language isn't 2 or 3 letters ("japanese"), and `und` are refused. `languages` lists the tags in use, the most used first, for the language picker.
 - **Release dates** are typed as `2006`, `2006-01` or `2006-01-10`, which also sets the precision (`dates.ts`). They're stored at midnight UTC on the first unknown day, and returned with only their known parts. An impossible date, like `2013-02-30`, is refused.
 - **A release's artists, labels, formats and media** are saved as ordered lists of ids, replacing the old ones. The order is `position` for artists and labels, and insertion order for formats and media.
 - **A release's tracks** are saved as a whole list (`setReleaseTracks`):
@@ -202,7 +211,7 @@ The path is under `/raw` so it can't collide with the frontend's `/files` pages 
 - **Single or multiple.** Switching a tag to single-value fails while a release or track has several values. The context says how many do, and `multiValueOwners` lists them. The database refuses it too.
 - **Deleting** a tag fails while any release or track has a value.
 - **Values** are typed as text and stored by type:
-  - text is trimmed;
+  - text is cleaned (NFC, trimmed);
   - a number is like `8`, `-3.25` or `1e3`, and must be finite;
   - a date is `2006`, `2006-01` or `2006-01-10`, stored at midnight UTC on the first unknown day (`dates.ts`). There's no precision, so it comes back as a full day: `2006-01-01`.
 - **A release's or track's values** are saved all at once (`setTags`, or `setTagsWith` inside another context's transaction), replacing the old ones:
@@ -327,7 +336,7 @@ Using it:
 
 ### Seeds
 
-`npm run db:seed` loads `priv/repo/seeds.ts`: two releases, with their artists, labels, formats and media, and the tags Genre and Score. There are no files or tracks, because those need real files on disk. It skips a database that already has releases. `npm run db:reset` starts over: it backs up and deletes the database, then migrates and seeds.
+`npm run db:seed` loads `priv/repo/seeds.ts`: five releases, with their artists, labels, formats and media, and the tags Genre and Score. Three of them are the examples of [3_alternate_names.md §4.1](../design/3_alternate_names.md#41-examples), so their artists have alternate names: "ALIKA" and the real name "Alika Milova", "福居良" in Japanese, misprints like "A. Ronnell". There are no files or tracks, because those need real files on disk. It skips a database that already has releases. `npm run db:reset` starts over: it backs up and deletes the database, then migrates and seeds.
 
 ## GraphQL
 
@@ -344,6 +353,7 @@ Using it:
   - `FileUse` names the id of the release, artist or track that uses a file `entityId`;
   - `Credit` has no id, since release and track credits come from two tables whose ids overlap;
   - `DiscTitle` has no id, since it's part of its release;
+  - `LabelName`, a label's alternate name, has no id, since nothing refers to it. `ArtistName` has one, since a name is saved by its id;
   - release formats and release media are two types (`ReleaseFormat`, `ReleaseMedium`) behind one `ListItem` interface, so format 1 and medium 1 stay apart;
   - tags are likewise `TextTag`, `NumberTag` and `DateTag` behind a `Tag` interface;
   - `TagValues`, a tag with its values on a release or track, has no id;
@@ -354,8 +364,8 @@ Using it:
   - `files`, `file`, `fileCounts`: registered files. `files(withoutTrack: true)` leaves out tracks' audio, for creating tracks.
   - `folder`, `folderFiles`: the library on disk.
   - `registerFiles`, `updateFile`, `deleteFile`: changes to the file records.
-  - `artists`, `artist`, `labels`, `label`, `releases`, `release`, `tracks`, `track`, `listItems`, `listItem`: the catalog. `releases` filters by `format`, `medium`, `label`, `artist` and `tags`, `tracks` by `release` and `tags`. `releasesTitled` finds releases with a title, and `releaseIds` every release a filter matches. `creditRoles` suggests roles for credits.
-  - `createArtist`, `updateArtist`, `deleteArtist`, and the same for labels, releases, tracks and list items.
+  - `artists`, `artist`, `labels`, `label`, `releases`, `release`, `tracks`, `track`, `listItems`, `listItem`: the catalog. `releases` filters by `format`, `medium`, `label`, `artist` and `tags`, `tracks` by `release` and `tags`. `releasesTitled` finds releases with a title, and `releaseIds` every release a filter matches. `creditRoles` suggests roles for credits. `Artist.alternateNames` and `Label.alternateNames` are their other names, and `languages` the language tags in use on names.
+  - `createArtist`, `updateArtist`, `deleteArtist`, and the same for labels, releases, tracks and list items. `ArtistInput` and `LabelInput` take the name's language and the alternate names.
   - `setReleaseTracks`, `setReleaseFiles`, `setReleaseCredits`: a release's edit tabs. Files can be given by path, and they're registered first. `setReleaseTracks` also takes the disc titles, which `Release.discTitles` reads.
   - `setReleaseCover`, `setArtistPicture`, `setLabelPicture`: only the image, from a file id or a path to register first. The pages set an empty one with them.
   - `catalogTotals`: the dashboard's numbers.

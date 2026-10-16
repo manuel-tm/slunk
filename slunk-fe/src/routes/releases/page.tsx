@@ -35,10 +35,12 @@ const ReleaseQueryDocument = graphql(`
       artists {
         id
         name
+        nameLanguage
       }
       labels {
         id
         name
+        nameLanguage
       }
       formats {
         id
@@ -53,6 +55,7 @@ const ReleaseQueryDocument = graphql(`
         artists {
           id
           name
+          nameLanguage
         }
       }
       tags {
@@ -80,16 +83,19 @@ const ReleaseQueryDocument = graphql(`
         artists {
           id
           name
+          nameLanguage
         }
         features {
           id
           name
+          nameLanguage
         }
         credits {
           role
           artists {
             id
             name
+            nameLanguage
           }
         }
       }

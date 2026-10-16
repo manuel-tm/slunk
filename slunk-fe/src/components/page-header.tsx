@@ -11,8 +11,10 @@ import {
 } from "@/components/ui/breadcrumb"
 import { Separator } from "@/components/ui/separator"
 import { SidebarTrigger } from "@/components/ui/sidebar"
+import { textProps } from "@/lib/languages"
 
-export type Crumb = { label: string; to?: string }
+/** A crumb. `lang` is the language of a name in it (3_alternate_names.md §7.1). */
+export type Crumb = { label: string; to?: string; lang?: string | null }
 
 /**
  * A page's header (design §7.1): its breadcrumb title on the left, and its
@@ -40,10 +42,12 @@ export function PageHeader({
               <BreadcrumbItem>
                 {crumb.to && index < crumbs.length - 1 ? (
                   <BreadcrumbLink render={<Link to={crumb.to} />}>
-                    {crumb.label}
+                    <span {...textProps(crumb.lang)}>{crumb.label}</span>
                   </BreadcrumbLink>
                 ) : (
-                  <BreadcrumbPage>{crumb.label}</BreadcrumbPage>
+                  <BreadcrumbPage>
+                    <span {...textProps(crumb.lang)}>{crumb.label}</span>
+                  </BreadcrumbPage>
                 )}
               </BreadcrumbItem>
             </Fragment>

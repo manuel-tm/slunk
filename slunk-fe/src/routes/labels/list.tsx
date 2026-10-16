@@ -1,6 +1,7 @@
 import { useQuery } from "@apollo/client/react"
 import { Link } from "react-router"
 
+import { MatchedName } from "@/components/alternate-names"
 import { ListLayout, PER_PAGE } from "@/components/list/list-layout"
 import { SortableHead } from "@/components/list/sortable-head"
 import {
@@ -14,6 +15,7 @@ import {
 import { graphql } from "@/gql"
 import { useListParams } from "@/hooks/use-list-params"
 import { formatDateTime } from "@/lib/format"
+import { textProps } from "@/lib/languages"
 
 const LabelsQuery = graphql(`
   query Labels($page: Int!, $perPage: Int!, $sort: String, $q: String) {
@@ -22,6 +24,11 @@ const LabelsQuery = graphql(`
       items {
         id
         name
+        nameLanguage
+        alternateNames {
+          name
+          language
+        }
         insertedAt
         updatedAt
       }
@@ -71,9 +78,18 @@ export function LabelList() {
             <TableRow key={label.id}>
               <TableCell className="tabular-nums">{label.id}</TableCell>
               <TableCell>
-                <Link to={`/labels/${label.id}`} className="hover:underline">
+                <Link
+                  to={`/labels/${label.id}`}
+                  className="hover:underline"
+                  {...textProps(label.nameLanguage)}
+                >
                   {label.name}
                 </Link>
+                <MatchedName
+                  main={label.name}
+                  names={label.alternateNames}
+                  q={list.q}
+                />
               </TableCell>
               <TableCell>{formatDateTime(label.insertedAt)}</TableCell>
               <TableCell>{formatDateTime(label.updatedAt)}</TableCell>

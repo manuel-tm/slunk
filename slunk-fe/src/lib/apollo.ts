@@ -29,7 +29,14 @@ export const apollo = new ApolloClient({
         "tags"
       ),
       Track: replaced("artists", "features", "performers", "credits", "files"),
-      Artist: replaced("files", "appearances", "credits", "formatCounts"),
+      Artist: replaced(
+        "alternateNames",
+        "files",
+        "appearances",
+        "credits",
+        "formatCounts"
+      ),
+      Label: replaced("alternateNames"),
     },
   }),
   // A page shows what's cached at once, and asks the backend again, so it

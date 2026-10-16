@@ -168,5 +168,20 @@ export function createStatsRepository(db: Kysely<DB>): StatsRepository {
       `.execute(db)
       return rows[0]
     },
+
+    async languages() {
+      const { rows } = await sql<{ language: string }>`
+        select language from (
+          select name_language as language from artists
+          union all select name_language from labels
+          union all select language from artist_alternate_names
+          union all select language from label_alternate_names
+        )
+        where language is not null
+        group by language
+        order by count(*) desc, language
+      `.execute(db)
+      return rows.map((row) => row.language)
+    },
   }
 }

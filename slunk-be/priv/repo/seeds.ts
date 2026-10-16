@@ -15,6 +15,15 @@ export async function seed(db: Kysely<DB>): Promise<void> {
     "The High School Musical Cast",
     "Zac Efron",
     "Vanessa Anne Hudgens",
+    // With the alternate names of 3_alternate_names.md §4.1, below
+    "Alika",
+    "Ryo Fukui",
+    "Ryo Fukui Trio",
+    "Jimmy Van Heusen",
+    "Ann Ronell",
+    "Joseph Kosma",
+    "Masataka Ito",
+    "Teruo Isono",
   ])
   const label = await insertNamed(db, "labels", [
     "October's Very Own",
@@ -22,12 +31,19 @@ export async function seed(db: Kysely<DB>): Promise<void> {
     "Cash Money",
     "Republic Records",
     "Walt Disney Records",
+    "Nadja",
   ])
   const format = await upsertNamed(db, "release_formats", [
     "Album",
+    "EP",
+    "LP",
     "Soundtrack",
   ])
-  const medium = await upsertNamed(db, "release_media", ["CD"])
+  const medium = await upsertNamed(db, "release_media", [
+    "CD",
+    "Digital",
+    "Vinyl",
+  ])
   const genre = await upsertTag(db, "text_tags", "Genre", true)
   const score = await upsertTag(db, "real_number_tags", "Score", false)
 
@@ -62,6 +78,70 @@ export async function seed(db: Kysely<DB>): Promise<void> {
     media: [medium["CD"]],
   })
 
+  // Alternate names (3_alternate_names.md §4.1): "ALIKA" differs from the
+  // main name only by case, and "A. Ronnell" is misprinted on "Scenery"
+  await db
+    .insertInto("artist_alternate_names")
+    .values(
+      (
+        [
+          ["Alika", "Alika Milova", null, 1, null],
+          ["Alika", "ALIKA", null, 0, null],
+          ["Ryo Fukui", "福居良", "ja", 0, null],
+          ["Ryo Fukui", "R. Fukui", null, 0, null],
+          ["Ryo Fukui Trio", "福居良トリオ", "ja", 0, null],
+          ["Jimmy Van Heusen", "J. Van Heusen", null, 0, null],
+          ["Ann Ronell", "A. Ronnell", null, 0, "misprint"],
+          ["Joseph Kosma", "J. Kosma", null, 0, null],
+          ["Masataka Ito", "いとう・まさたか", "ja", 0, null],
+          ["Teruo Isono", "いソノてルヲ", "ja", 0, null],
+        ] as const
+      ).map(([owner, name, language, real_name, note], index, all) => ({
+        artist_id: artist[owner],
+        name,
+        language,
+        real_name,
+        note,
+        // Numbered per artist
+        position: all.slice(0, index).filter(([o]) => o === owner).length,
+      }))
+    )
+    .execute()
+  await insertRelease(db, {
+    release: {
+      title: "Alika",
+      release_date: Date.UTC(2023, 0, 1) / 1000,
+      release_date_precision: "year",
+    },
+    artists: [artist["Alika"]],
+    labels: [],
+    formats: [],
+    media: [],
+  })
+  await insertRelease(db, {
+    release: {
+      title: "virmalised",
+      release_date: Date.UTC(2024, 0, 1) / 1000,
+      release_date_precision: "year",
+    },
+    artists: [artist["Alika"]],
+    labels: [],
+    formats: [format["EP"]],
+    media: [medium["Digital"]],
+  })
+  await insertRelease(db, {
+    release: {
+      title: "Scenery",
+      release_date: Date.UTC(1976, 0, 1) / 1000,
+      release_date_precision: "year",
+      catalog_number: "PA-7148",
+    },
+    artists: [artist["Ryo Fukui"], artist["Ryo Fukui Trio"]],
+    labels: [label["Nadja"]],
+    formats: [format["LP"], format["Album"]],
+    media: [medium["Vinyl"]],
+  })
+
   await db
     .insertInto("release_text_tags")
     .values([
@@ -78,7 +158,7 @@ export async function seed(db: Kysely<DB>): Promise<void> {
     ])
     .execute()
 
-  console.log("Seeded 2 releases, 5 artists, 5 labels and 2 tags.")
+  console.log("Seeded 5 releases, 13 artists, 6 labels and 2 tags.")
 }
 
 /** Inserts rows by name, returning their ids by name. */
@@ -172,23 +252,30 @@ async function insertRelease(
       }))
     )
     .execute()
-  await db
-    .insertInto("labels_releases")
-    .values(
-      labels.map((label_id, position) => ({
-        label_id,
-        release_id: id,
-        position,
-      }))
-    )
-    .execute()
-  await db
-    .insertInto("release_formats_releases")
-    .values(formats.map((format_id) => ({ format_id, release_id: id })))
-    .execute()
-  await db
-    .insertInto("release_media_releases")
-    .values(media.map((medium_id) => ({ medium_id, release_id: id })))
-    .execute()
+  // A release can have no labels, formats or media yet
+  if (labels.length > 0) {
+    await db
+      .insertInto("labels_releases")
+      .values(
+        labels.map((label_id, position) => ({
+          label_id,
+          release_id: id,
+          position,
+        }))
+      )
+      .execute()
+  }
+  if (formats.length > 0) {
+    await db
+      .insertInto("release_formats_releases")
+      .values(formats.map((format_id) => ({ format_id, release_id: id })))
+      .execute()
+  }
+  if (media.length > 0) {
+    await db
+      .insertInto("release_media_releases")
+      .values(media.map((medium_id) => ({ medium_id, release_id: id })))
+      .execute()
+  }
   return id
 }

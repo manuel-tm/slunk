@@ -1,6 +1,6 @@
 import type { GraphQLResolveInfo } from 'graphql';
 import type { FileRecord as FileRecordModel, FileLink as FileLinkModel } from '../../slunk/media/repository.ts';
-import type { Artist as ArtistModel, Label as LabelModel, Release as ReleaseModel, Track as TrackModel, Credit as CreditModel, ListItem as ListItemModel, Appearance as AppearanceModel, ArtistCredit as ArtistCreditModel, FormatCount as FormatCountModel } from '../../slunk/catalog/repository.ts';
+import type { Artist as ArtistModel, Label as LabelModel, AlternateName as AlternateNameModel, Release as ReleaseModel, Track as TrackModel, Credit as CreditModel, ListItem as ListItemModel, Appearance as AppearanceModel, ArtistCredit as ArtistCreditModel, FormatCount as FormatCountModel } from '../../slunk/catalog/repository.ts';
 import type { Tag as TagModel } from '../../slunk/tagging/repository.ts';
 import type { OwnerTag as OwnerTagModel } from '../../slunk/tagging.ts';
 import type { Context } from './context.ts';
@@ -26,6 +26,8 @@ export type Appearance = {
 
 export type Artist = {
   __typename?: 'Artist';
+  /** Other names the artist goes by, real names among them, in order. */
+  alternateNames: Array<ArtistName>;
   /** Releases where the artist performs or is featured on tracks, without being a release artist. */
   appearances: Array<Appearance>;
   /** What keeps it from being deleted, in words. */
@@ -37,7 +39,10 @@ export type Artist = {
   formatCounts: Array<FormatCount>;
   id: Scalars['ID']['output'];
   insertedAt: Scalars['Float']['output'];
+  /** The main name */
   name: Scalars['String']['output'];
+  /** The main name's language: a BCP 47 tag, like ja or ja-Latn. Null when it isn't known. */
+  nameLanguage?: Maybe<Scalars['String']['output']>;
   /** The primary image. Other images are file links. */
   picture?: Maybe<File>;
   updatedAt: Scalars['Float']['output'];
@@ -64,9 +69,36 @@ export type ArtistCredit = {
 };
 
 export type ArtistInput = {
+  /** Replaces the alternate names, in order. Left out, they stay as they are. */
+  alternateNames?: InputMaybe<Array<ArtistNameInput>>;
   files: Array<FileLinkInput>;
   name: Scalars['String']['input'];
+  /** A BCP 47 tag, stored in canonical form: JA-latn becomes ja-Latn. Blank means unknown. */
+  nameLanguage?: InputMaybe<Scalars['String']['input']>;
   pictureId?: InputMaybe<Scalars['ID']['input']>;
+};
+
+/** A name an artist goes by, besides its main one: another spelling (ALIKA), a name in another script (福居良), a real name. */
+export type ArtistName = {
+  __typename?: 'ArtistName';
+  id: Scalars['ID']['output'];
+  /** A BCP 47 tag, like ja or ja-Latn. Null when it isn't known. */
+  language?: Maybe<Scalars['String']['output']>;
+  /** As written. Compared exactly, case included. */
+  name: Scalars['String']['output'];
+  note?: Maybe<Scalars['String']['output']>;
+  /** A legal or birth name */
+  realName: Scalars['Boolean']['output'];
+};
+
+/** An alternate name. Names are trimmed, a blank one is left out, and none can be given twice or be the main name, except a real name. */
+export type ArtistNameInput = {
+  /** One of the artist's alternate names. Without an id, the name is added. */
+  id?: InputMaybe<Scalars['ID']['input']>;
+  language?: InputMaybe<Scalars['String']['input']>;
+  name: Scalars['String']['input'];
+  note?: InputMaybe<Scalars['String']['input']>;
+  realName: Scalars['Boolean']['input'];
 };
 
 export type ArtistPage = {
@@ -280,10 +312,15 @@ export type Health = {
 
 export type Label = {
   __typename?: 'Label';
+  /** Other names the label goes by, in order. */
+  alternateNames: Array<LabelName>;
   blockers: Array<Scalars['String']['output']>;
   id: Scalars['ID']['output'];
   insertedAt: Scalars['Float']['output'];
+  /** The main name */
   name: Scalars['String']['output'];
+  /** The main name's language: a BCP 47 tag. Null when it isn't known. */
+  nameLanguage?: Maybe<Scalars['String']['output']>;
   /** The logo */
   picture?: Maybe<File>;
   releaseCount: Scalars['Int']['output'];
@@ -291,8 +328,25 @@ export type Label = {
 };
 
 export type LabelInput = {
+  /** Replaces the alternate names, in order. Left out, they stay as they are. */
+  alternateNames?: InputMaybe<Array<LabelNameInput>>;
   name: Scalars['String']['input'];
+  nameLanguage?: InputMaybe<Scalars['String']['input']>;
   pictureId?: InputMaybe<Scalars['ID']['input']>;
+};
+
+/** A name a label goes by, besides its main one. It has no id: nothing refers to it. */
+export type LabelName = {
+  __typename?: 'LabelName';
+  language?: Maybe<Scalars['String']['output']>;
+  name: Scalars['String']['output'];
+  note?: Maybe<Scalars['String']['output']>;
+};
+
+export type LabelNameInput = {
+  language?: InputMaybe<Scalars['String']['input']>;
+  name: Scalars['String']['input'];
+  note?: InputMaybe<Scalars['String']['input']>;
 };
 
 export type LabelPage = {
@@ -622,6 +676,7 @@ export type NumberTagMultiValueTracksArgs = {
 export type Query = {
   __typename?: 'Query';
   artist?: Maybe<Artist>;
+  /** Artists. `q` matches part of the main name or of an alternate name. */
   artists: ArtistPage;
   catalogTotals: CatalogTotals;
   /** Roles in use on releases and tracks, for suggestions: the first 20 containing `q`, ignoring case, the most used first. Each spelling is its own suggestion, so "Mixed By" and "Mixed by" are both offered. */
@@ -637,7 +692,10 @@ export type Query = {
   /** Whether the backend is up, and which database it serves. */
   health: Health;
   label?: Maybe<Label>;
+  /** Labels. `q` matches part of the main name or of an alternate name. */
   labels: LabelPage;
+  /** Language tags in use on names, the most used first, for the language picker. */
+  languages: Array<Scalars['String']['output']>;
   /** Runs the library check: reads every registered file's size and mtime, and lists the folders they're in. When files are missing, it also scans the library and hashes files of the same size, to find where they moved. Nothing is written. */
   libraryCheck: LibraryCheck;
   listItem?: Maybe<ListItem>;
@@ -1213,6 +1271,8 @@ export type ResolversTypes = {
   ArtistCounts: ResolverTypeWrapper<ArtistCounts>;
   ArtistCredit: ResolverTypeWrapper<ArtistCreditModel>;
   ArtistInput: ArtistInput;
+  ArtistName: ResolverTypeWrapper<AlternateNameModel>;
+  ArtistNameInput: ArtistNameInput;
   ArtistPage: ResolverTypeWrapper<Omit<ArtistPage, 'items'> & { items: Array<ResolversTypes['Artist']> }>;
   ArtistSuggestion: ResolverTypeWrapper<Omit<ArtistSuggestion, 'artist'> & { artist?: Maybe<ResolversTypes['Artist']> }>;
   Boolean: ResolverTypeWrapper<Scalars['Boolean']['output']>;
@@ -1242,6 +1302,8 @@ export type ResolversTypes = {
   Int: ResolverTypeWrapper<Scalars['Int']['output']>;
   Label: ResolverTypeWrapper<LabelModel>;
   LabelInput: LabelInput;
+  LabelName: ResolverTypeWrapper<AlternateNameModel>;
+  LabelNameInput: LabelNameInput;
   LabelPage: ResolverTypeWrapper<Omit<LabelPage, 'items'> & { items: Array<ResolversTypes['Label']> }>;
   LibraryCheck: ResolverTypeWrapper<Omit<LibraryCheck, 'changedFiles' | 'missingFiles' | 'releasesWithoutArtists' | 'tracksWithoutPerformers' | 'unregisteredFolders'> & { changedFiles: Array<ResolversTypes['ChangedFile']>, missingFiles: Array<ResolversTypes['MissingFile']>, releasesWithoutArtists: Array<ResolversTypes['Release']>, tracksWithoutPerformers: Array<ResolversTypes['Track']>, unregisteredFolders: Array<ResolversTypes['UnregisteredFolder']> }>;
   ListItem: ResolverTypeWrapper<ListItemModel>;
@@ -1289,6 +1351,8 @@ export type ResolversParentTypes = {
   ArtistCounts: ArtistCounts;
   ArtistCredit: ArtistCreditModel;
   ArtistInput: ArtistInput;
+  ArtistName: AlternateNameModel;
+  ArtistNameInput: ArtistNameInput;
   ArtistPage: Omit<ArtistPage, 'items'> & { items: Array<ResolversParentTypes['Artist']> };
   ArtistSuggestion: Omit<ArtistSuggestion, 'artist'> & { artist?: Maybe<ResolversParentTypes['Artist']> };
   Boolean: Scalars['Boolean']['output'];
@@ -1316,6 +1380,8 @@ export type ResolversParentTypes = {
   Int: Scalars['Int']['output'];
   Label: LabelModel;
   LabelInput: LabelInput;
+  LabelName: AlternateNameModel;
+  LabelNameInput: LabelNameInput;
   LabelPage: Omit<LabelPage, 'items'> & { items: Array<ResolversParentTypes['Label']> };
   LibraryCheck: Omit<LibraryCheck, 'changedFiles' | 'missingFiles' | 'releasesWithoutArtists' | 'tracksWithoutPerformers' | 'unregisteredFolders'> & { changedFiles: Array<ResolversParentTypes['ChangedFile']>, missingFiles: Array<ResolversParentTypes['MissingFile']>, releasesWithoutArtists: Array<ResolversParentTypes['Release']>, tracksWithoutPerformers: Array<ResolversParentTypes['Track']>, unregisteredFolders: Array<ResolversParentTypes['UnregisteredFolder']> };
   ListItem: ListItemModel;
@@ -1360,6 +1426,7 @@ export type AppearanceResolvers<ContextType = Context, ParentType extends Resolv
 };
 
 export type ArtistResolvers<ContextType = Context, ParentType extends ResolversParentTypes['Artist'] = ResolversParentTypes['Artist']> = {
+  alternateNames?: Resolver<Array<ResolversTypes['ArtistName']>, ParentType, ContextType>;
   appearances?: Resolver<Array<ResolversTypes['Appearance']>, ParentType, ContextType>;
   blockers?: Resolver<Array<ResolversTypes['String']>, ParentType, ContextType>;
   counts?: Resolver<ResolversTypes['ArtistCounts'], ParentType, ContextType>;
@@ -1369,6 +1436,7 @@ export type ArtistResolvers<ContextType = Context, ParentType extends ResolversP
   id?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
   insertedAt?: Resolver<ResolversTypes['Float'], ParentType, ContextType>;
   name?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  nameLanguage?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   picture?: Resolver<Maybe<ResolversTypes['File']>, ParentType, ContextType>;
   updatedAt?: Resolver<ResolversTypes['Float'], ParentType, ContextType>;
 };
@@ -1384,6 +1452,14 @@ export type ArtistCreditResolvers<ContextType = Context, ParentType extends Reso
   release?: Resolver<ResolversTypes['Release'], ParentType, ContextType>;
   role?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   track?: Resolver<Maybe<ResolversTypes['Track']>, ParentType, ContextType>;
+};
+
+export type ArtistNameResolvers<ContextType = Context, ParentType extends ResolversParentTypes['ArtistName'] = ResolversParentTypes['ArtistName']> = {
+  id?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
+  language?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  name?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  note?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  realName?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType>;
 };
 
 export type ArtistPageResolvers<ContextType = Context, ParentType extends ResolversParentTypes['ArtistPage'] = ResolversParentTypes['ArtistPage']> = {
@@ -1497,13 +1573,21 @@ export type HealthResolvers<ContextType = Context, ParentType extends ResolversP
 };
 
 export type LabelResolvers<ContextType = Context, ParentType extends ResolversParentTypes['Label'] = ResolversParentTypes['Label']> = {
+  alternateNames?: Resolver<Array<ResolversTypes['LabelName']>, ParentType, ContextType>;
   blockers?: Resolver<Array<ResolversTypes['String']>, ParentType, ContextType>;
   id?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
   insertedAt?: Resolver<ResolversTypes['Float'], ParentType, ContextType>;
   name?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  nameLanguage?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   picture?: Resolver<Maybe<ResolversTypes['File']>, ParentType, ContextType>;
   releaseCount?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
   updatedAt?: Resolver<ResolversTypes['Float'], ParentType, ContextType>;
+};
+
+export type LabelNameResolvers<ContextType = Context, ParentType extends ResolversParentTypes['LabelName'] = ResolversParentTypes['LabelName']> = {
+  language?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  name?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  note?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
 };
 
 export type LabelPageResolvers<ContextType = Context, ParentType extends ResolversParentTypes['LabelPage'] = ResolversParentTypes['LabelPage']> = {
@@ -1596,6 +1680,7 @@ export type QueryResolvers<ContextType = Context, ParentType extends ResolversPa
   health?: Resolver<ResolversTypes['Health'], ParentType, ContextType>;
   label?: Resolver<Maybe<ResolversTypes['Label']>, ParentType, ContextType, RequireFields<QueryLabelArgs, 'id'>>;
   labels?: Resolver<ResolversTypes['LabelPage'], ParentType, ContextType, RequireFields<QueryLabelsArgs, 'page' | 'perPage'>>;
+  languages?: Resolver<Array<ResolversTypes['String']>, ParentType, ContextType>;
   libraryCheck?: Resolver<ResolversTypes['LibraryCheck'], ParentType, ContextType>;
   listItem?: Resolver<Maybe<ResolversTypes['ListItem']>, ParentType, ContextType, RequireFields<QueryListItemArgs, 'id' | 'kind'>>;
   listItems?: Resolver<ResolversTypes['ListItemPage'], ParentType, ContextType, RequireFields<QueryListItemsArgs, 'kind' | 'page' | 'perPage'>>;
@@ -1758,6 +1843,7 @@ export type Resolvers<ContextType = Context> = {
   Artist?: ArtistResolvers<ContextType>;
   ArtistCounts?: ArtistCountsResolvers<ContextType>;
   ArtistCredit?: ArtistCreditResolvers<ContextType>;
+  ArtistName?: ArtistNameResolvers<ContextType>;
   ArtistPage?: ArtistPageResolvers<ContextType>;
   ArtistSuggestion?: ArtistSuggestionResolvers<ContextType>;
   CatalogTotals?: CatalogTotalsResolvers<ContextType>;
@@ -1775,6 +1861,7 @@ export type Resolvers<ContextType = Context> = {
   FormatCount?: FormatCountResolvers<ContextType>;
   Health?: HealthResolvers<ContextType>;
   Label?: LabelResolvers<ContextType>;
+  LabelName?: LabelNameResolvers<ContextType>;
   LabelPage?: LabelPageResolvers<ContextType>;
   LibraryCheck?: LibraryCheckResolvers<ContextType>;
   ListItem?: ListItemResolvers<ContextType>;

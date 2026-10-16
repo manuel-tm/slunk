@@ -61,6 +61,7 @@ const TracksQuery = graphql(`
         performers {
           id
           name
+          nameLanguage
         }
         file {
           id

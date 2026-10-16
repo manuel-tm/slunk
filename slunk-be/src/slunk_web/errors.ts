@@ -27,8 +27,16 @@ const MESSAGES: [RegExp, string][] = [
     "Two credits have the same role, ignoring case",
   ],
   [
+    /UNIQUE constraint failed: (artist|label)_alternate_names\.\w+, \w+\.name/,
+    "It already has that alternate name",
+  ],
+  [
     /UNIQUE constraint failed: \w+\.\w+_id, \w+\.\w+_id/,
     "Each one can only be listed once",
+  ],
+  [
+    /CHECK constraint failed: \("(name_)?language"[\s\S]*/,
+    "That isn't a language tag, like en, ja or ja-Latn",
   ],
   [/CHECK constraint failed: (name|title|role)$/, "The $1 can't be empty"],
   [

@@ -9,10 +9,21 @@ export type Generated<T> = T extends ColumnType<infer S, infer I, infer U>
   ? ColumnType<S, I | undefined, U>
   : ColumnType<T, T | undefined, T>;
 
+export interface ArtistAlternateNames {
+  artist_id: number;
+  id: Generated<number>;
+  language: string | null;
+  name: string;
+  note: string | null;
+  position: number;
+  real_name: Generated<number>;
+}
+
 export interface Artists {
   id: Generated<number>;
   inserted_at: Generated<number>;
   name: string;
+  name_language: string | null;
   picture: number | null;
   updated_at: Generated<number>;
 }
@@ -84,10 +95,20 @@ export interface FilesTracks {
   track_id: number;
 }
 
+export interface LabelAlternateNames {
+  id: Generated<number>;
+  label_id: number;
+  language: string | null;
+  name: string;
+  note: string | null;
+  position: number;
+}
+
 export interface Labels {
   id: Generated<number>;
   inserted_at: Generated<number>;
   name: string;
+  name_language: string | null;
   picture: number | null;
   updated_at: Generated<number>;
 }
@@ -227,6 +248,7 @@ export interface TrackTextTags {
 }
 
 export interface DB {
+  artist_alternate_names: ArtistAlternateNames;
   artists: Artists;
   artists_files: ArtistsFiles;
   artists_release_credits: ArtistsReleaseCredits;
@@ -237,6 +259,7 @@ export interface DB {
   files: Files;
   files_releases: FilesReleases;
   files_tracks: FilesTracks;
+  label_alternate_names: LabelAlternateNames;
   labels: Labels;
   labels_releases: LabelsReleases;
   migrations: Migrations;

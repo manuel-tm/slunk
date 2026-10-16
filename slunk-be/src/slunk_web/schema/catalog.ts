@@ -99,6 +99,7 @@ export const catalogResolvers: Resolvers = {
       catalog.getListItem(kind, n(id)),
     creditRoles: (_parent, { q }, { catalog }) => catalog.creditRoles(q),
     catalogTotals: (_parent, _args, { catalog }) => catalog.totals(),
+    languages: (_parent, _args, { catalog }) => catalog.languages(),
     releaseSuggestion: async (_parent, { folder }, { catalog }) => {
       const { artistNames, ...suggestion } =
         await catalog.suggestRelease(folder)
@@ -120,17 +121,9 @@ export const catalogResolvers: Resolvers = {
 
   Mutation: {
     createArtist: (_parent, { input }, { catalog }) =>
-      catalog.createArtist({
-        name: input.name,
-        pictureId: optional(input.pictureId),
-        files: fileLinks(input.files),
-      }),
+      catalog.createArtist(artistInput(input)),
     updateArtist: (_parent, { id, input }, { catalog }) =>
-      catalog.updateArtist(n(id), {
-        name: input.name,
-        pictureId: optional(input.pictureId),
-        files: fileLinks(input.files),
-      }),
+      catalog.updateArtist(n(id), artistInput(input)),
     setArtistPicture: (_parent, { id, picture }, { catalog }) =>
       catalog.setArtistPicture(n(id), fileRef(picture)),
     deleteArtist: async (_parent, { id }, { catalog }) => {
@@ -138,15 +131,9 @@ export const catalogResolvers: Resolvers = {
       return id
     },
     createLabel: (_parent, { input }, { catalog }) =>
-      catalog.createLabel({
-        name: input.name,
-        pictureId: optional(input.pictureId),
-      }),
+      catalog.createLabel(labelInput(input)),
     updateLabel: (_parent, { id, input }, { catalog }) =>
-      catalog.updateLabel(n(id), {
-        name: input.name,
-        pictureId: optional(input.pictureId),
-      }),
+      catalog.updateLabel(n(id), labelInput(input)),
     setLabelPicture: (_parent, { id, picture }, { catalog }) =>
       catalog.setLabelPicture(n(id), fileRef(picture)),
     deleteLabel: async (_parent, { id }, { catalog }) => {
@@ -209,6 +196,8 @@ export const catalogResolvers: Resolvers = {
   },
 
   Artist: {
+    alternateNames: (artist, _args, { loaders }) =>
+      loaders.artistNames.load(artist.id),
     picture: (artist, _args, { loaders }) =>
       artist.picture === null ? null : loaders.file.load(artist.picture),
     files: (artist, _args, { loaders }) => loaders.artistFiles.load(artist.id),
@@ -249,6 +238,8 @@ export const catalogResolvers: Resolvers = {
   },
 
   Label: {
+    alternateNames: (label, _args, { loaders }) =>
+      loaders.labelNames.load(label.id),
     picture: (label, _args, { loaders }) =>
       label.picture === null ? null : loaders.file.load(label.picture),
     releaseCount: (label, _args, { catalog }) =>
@@ -342,6 +333,44 @@ export const catalogResolvers: Resolvers = {
   FileLink: {
     file: (link, _args, { loaders }) => loadRequired(loaders.file, link.fileId),
   },
+}
+
+type NameInput = {
+  id?: string | null
+  name: string
+  language?: string | null
+  realName?: boolean
+  note?: string | null
+}
+
+function artistInput(input: {
+  name: string
+  nameLanguage?: string | null
+  pictureId?: string | null
+  files: Parameters<typeof fileLinks>[0]
+  alternateNames?: NameInput[] | null
+}) {
+  return {
+    ...labelInput(input),
+    files: fileLinks(input.files),
+  }
+}
+
+function labelInput(input: {
+  name: string
+  nameLanguage?: string | null
+  pictureId?: string | null
+  alternateNames?: NameInput[] | null
+}) {
+  return {
+    name: input.name,
+    nameLanguage: input.nameLanguage,
+    pictureId: optional(input.pictureId),
+    alternateNames: input.alternateNames?.map((name) => ({
+      ...name,
+      id: optional(name.id),
+    })),
+  }
 }
 
 function releaseInput(input: {

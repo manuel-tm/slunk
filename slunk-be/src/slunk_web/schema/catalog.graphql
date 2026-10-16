@@ -1,6 +1,8 @@
 extend type Query {
+  "Artists. `q` matches part of the main name or of an alternate name."
   artists(page: Int! = 1, perPage: Int! = 50, "`name`, or `id`, with `-` for descending" sort: String, q: String): ArtistPage!
   artist(id: ID!): Artist
+  "Labels. `q` matches part of the main name or of an alternate name."
   labels(page: Int! = 1, perPage: Int! = 50, "`name`, or `id`, with `-` for descending" sort: String, q: String): LabelPage!
   label(id: ID!): Label
   "Releases. The filters combine: `format` and `medium` give \"EPs on vinyl\"."
@@ -48,6 +50,8 @@ extend type Query {
   "Roles in use on releases and tracks, for suggestions: the first 20 containing `q`, ignoring case, the most used first. Each spelling is its own suggestion, so \"Mixed By\" and \"Mixed by\" are both offered."
   creditRoles(q: String): [String!]!
   catalogTotals: CatalogTotals!
+  "Language tags in use on names, the most used first, for the language picker."
+  languages: [String!]!
   "What a folder suggests for a new release, from its files' embedded tags, or else its name."
   releaseSuggestion(folder: String!): ReleaseSuggestion!
   "A row for each audio file in a folder and its subfolders: from embedded tags, or else the file's name (`CD2/03 Title.flac` is disc 2, track 3)."
@@ -98,7 +102,12 @@ extend type Mutation {
 
 type Artist {
   id: ID!
+  "The main name"
   name: String!
+  "The main name's language: a BCP 47 tag, like ja or ja-Latn. Null when it isn't known."
+  nameLanguage: String
+  "Other names the artist goes by, real names among them, in order."
+  alternateNames: [ArtistName!]!
   "The primary image. Other images are file links."
   picture: File
   insertedAt: Float!
@@ -138,6 +147,25 @@ type ArtistCredit {
   track: Track
 }
 
+"A name an artist goes by, besides its main one: another spelling (ALIKA), a name in another script (福居良), a real name."
+type ArtistName {
+  id: ID!
+  "As written. Compared exactly, case included."
+  name: String!
+  "A BCP 47 tag, like ja or ja-Latn. Null when it isn't known."
+  language: String
+  "A legal or birth name"
+  realName: Boolean!
+  note: String
+}
+
+"A name a label goes by, besides its main one. It has no id: nothing refers to it."
+type LabelName {
+  name: String!
+  language: String
+  note: String
+}
+
 type FormatCount {
   format: ReleaseFormat!
   count: Int!
@@ -145,7 +173,12 @@ type FormatCount {
 
 type Label {
   id: ID!
+  "The main name"
   name: String!
+  "The main name's language: a BCP 47 tag. Null when it isn't known."
+  nameLanguage: String
+  "Other names the label goes by, in order."
+  alternateNames: [LabelName!]!
   "The logo"
   picture: File
   insertedAt: Float!
@@ -335,13 +368,36 @@ input FileLinkInput {
 
 input ArtistInput {
   name: String!
+  "A BCP 47 tag, stored in canonical form: JA-latn becomes ja-Latn. Blank means unknown."
+  nameLanguage: String
   pictureId: ID
   files: [FileLinkInput!]! = []
+  "Replaces the alternate names, in order. Left out, they stay as they are."
+  alternateNames: [ArtistNameInput!]
+}
+
+"An alternate name. Names are trimmed, a blank one is left out, and none can be given twice or be the main name, except a real name."
+input ArtistNameInput {
+  "One of the artist's alternate names. Without an id, the name is added."
+  id: ID
+  name: String!
+  language: String
+  realName: Boolean! = false
+  note: String
 }
 
 input LabelInput {
   name: String!
+  nameLanguage: String
   pictureId: ID
+  "Replaces the alternate names, in order. Left out, they stay as they are."
+  alternateNames: [LabelNameInput!]
+}
+
+input LabelNameInput {
+  name: String!
+  language: String
+  note: String
 }
 
 input ReleaseInput {

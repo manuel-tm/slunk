@@ -8,10 +8,22 @@ import { type CreatedTag, NewTagDialog } from "@/components/tag-fields"
 import { graphql } from "@/gql"
 import type { FileType, ListKind, TagType } from "@/gql/graphql"
 import { useDebounced } from "@/hooks/use-debounced"
+import { matchedName } from "@/lib/names"
 import { tagValueKey } from "@/lib/tags"
 
 // Pickers return the first 20 matches (design §7.3)
 const LIMIT = 20
+
+/** An artist or label as an option, showing the alternate name `q` matched. */
+const withMatch =
+  (q: string) =>
+  <T extends { name: string; alternateNames: { name: string }[] }>({
+    alternateNames,
+    ...option
+  }: T) => ({
+    ...option,
+    detail: matchedName(option.name, alternateNames, q)?.name ?? null,
+  })
 
 const ArtistOptions = graphql(`
   query ArtistOptions($q: String, $perPage: Int!) {
@@ -19,6 +31,10 @@ const ArtistOptions = graphql(`
       items {
         id
         name
+        lang: nameLanguage
+        alternateNames {
+          name
+        }
         image: picture {
           id
         }
@@ -47,7 +63,7 @@ export function ArtistPicker(props: PickerProps) {
       noun="artist"
       query={query}
       onQuery={setQuery}
-      options={data?.artists.items ?? []}
+      options={(data?.artists.items ?? []).map(withMatch(q))}
       onCreate={async (name) =>
         (await create({ variables: { name } })).data!.createArtist
       }
@@ -61,6 +77,10 @@ const LabelOptions = graphql(`
       items {
         id
         name
+        lang: nameLanguage
+        alternateNames {
+          name
+        }
       }
     }
   }
@@ -86,7 +106,7 @@ export function LabelPicker(props: PickerProps) {
       noun="label"
       query={query}
       onQuery={setQuery}
-      options={data?.labels.items ?? []}
+      options={(data?.labels.items ?? []).map(withMatch(q))}
       onCreate={async (name) =>
         (await create({ variables: { name } })).data!.createLabel
       }

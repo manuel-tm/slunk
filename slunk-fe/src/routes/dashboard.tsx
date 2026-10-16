@@ -46,6 +46,7 @@ const DashboardQuery = graphql(`
         artists {
           id
           name
+          nameLanguage
         }
       }
     }

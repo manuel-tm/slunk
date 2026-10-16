@@ -2,6 +2,7 @@ import { useMutation, useQuery } from "@apollo/client/react"
 import type { ReactNode } from "react"
 import { Link, useParams } from "react-router"
 
+import { AlternateNames } from "@/components/alternate-names"
 import { Button } from "@/components/ui/button"
 import { ButtonLink } from "@/components/button-link"
 import { Cover } from "@/components/cover"
@@ -29,12 +30,20 @@ import { graphql } from "@/gql"
 import type { ArtistHeaderFragment } from "@/gql/graphql"
 import { useListParams } from "@/hooks/use-list-params"
 import { formatReleased, roleKey } from "@/lib/format"
+import { textProps } from "@/lib/languages"
 import { NotFound } from "@/routes/not-found"
 
 graphql(`
   fragment ArtistHeader on Artist {
     id
     name
+    nameLanguage
+    alternateNames {
+      id
+      name
+      language
+      realName
+    }
     picture {
       id
     }
@@ -93,7 +102,10 @@ function ArtistFrame({
       <PageHeader
         crumbs={[
           { label: "Artists", to: "/artists" },
-          { label: artist ? `${artist.name} (${artist.id})` : id },
+          {
+            label: artist ? `${artist.name} (${artist.id})` : id,
+            lang: artist?.nameLanguage,
+          },
         ]}
       >
         {artist && (
@@ -149,9 +161,15 @@ function ArtistFrame({
                   setPicture({ variables: { id, picture } })
                 }
               />
-              <h1 className="font-heading text-2xl font-semibold">
-                {artist.name}
-              </h1>
+              <div className="flex flex-col gap-2">
+                <h1
+                  className="font-heading text-2xl font-semibold"
+                  {...textProps(artist.nameLanguage)}
+                >
+                  {artist.name}
+                </h1>
+                <AlternateNames names={artist.alternateNames} />
+              </div>
             </div>
             {children}
           </>
@@ -200,6 +218,7 @@ const ArtistReleasesQuery = graphql(`
         artists {
           id
           name
+          nameLanguage
         }
         formats {
           id
@@ -212,6 +231,7 @@ const ArtistReleasesQuery = graphql(`
         labels {
           id
           name
+          nameLanguage
         }
       }
     }
@@ -308,6 +328,7 @@ const ArtistAppearancesQuery = graphql(`
           artists {
             id
             name
+            nameLanguage
           }
         }
         tracks {

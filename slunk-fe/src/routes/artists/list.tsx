@@ -1,6 +1,7 @@
 import { useQuery } from "@apollo/client/react"
 import { Link } from "react-router"
 
+import { MatchedName } from "@/components/alternate-names"
 import { Cover } from "@/components/cover"
 import { ListLayout, PER_PAGE } from "@/components/list/list-layout"
 import { SortableHead } from "@/components/list/sortable-head"
@@ -15,6 +16,7 @@ import {
 import { graphql } from "@/gql"
 import { useListParams } from "@/hooks/use-list-params"
 import { formatDateTime } from "@/lib/format"
+import { textProps } from "@/lib/languages"
 
 const ArtistsQuery = graphql(`
   query Artists($page: Int!, $perPage: Int!, $sort: String, $q: String) {
@@ -23,6 +25,11 @@ const ArtistsQuery = graphql(`
       items {
         id
         name
+        nameLanguage
+        alternateNames {
+          name
+          language
+        }
         picture {
           id
         }
@@ -81,9 +88,18 @@ export function ArtistList() {
                 </Link>
               </TableCell>
               <TableCell>
-                <Link to={`/artists/${artist.id}`} className="hover:underline">
+                <Link
+                  to={`/artists/${artist.id}`}
+                  className="hover:underline"
+                  {...textProps(artist.nameLanguage)}
+                >
                   {artist.name}
                 </Link>
+                <MatchedName
+                  main={artist.name}
+                  names={artist.alternateNames}
+                  q={list.q}
+                />
               </TableCell>
               <TableCell>{formatDateTime(artist.insertedAt)}</TableCell>
               <TableCell>{formatDateTime(artist.updatedAt)}</TableCell>

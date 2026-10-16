@@ -60,6 +60,7 @@ const ReleasesQuery = graphql(`
         artists {
           id
           name
+          nameLanguage
         }
         formats {
           id
@@ -72,6 +73,7 @@ const ReleasesQuery = graphql(`
         labels {
           id
           name
+          nameLanguage
         }
       }
     }

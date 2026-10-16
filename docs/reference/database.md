@@ -11,8 +11,9 @@ This is the schema as built, by these migrations in `slunk-be/priv/repo/migratio
 | `20261014052413_add_track_tags` | Tag values on tracks, and the `<type>_tags_multiple_off` triggers that check them too |
 | `20261015192802_free_text_credit_roles` | Credit lines: `release_credits` and `track_credits` again, now with a free-text `role`, and `artists_release_credits` and `artists_track_credits`. It drops `credit_roles` and the old credits. |
 | `20261015195853_add_disc_titles` | Disc titles: `release_disc_titles`, and the triggers that keep each title on a disc with tracks |
+| `20261016144030_add_alternate_names` | Alternate names: `artist_alternate_names` and `label_alternate_names`, and `name_language` on `artists` and `labels` |
 
-The reasoning behind it is in [design §4](../design/1_introduction.md#4-data-model), and its appendices [A](../design/1_introduction.md#appendix-a-more-integrity-rules-in-the-database) and [D](../design/1_introduction.md#appendix-d-tag-values-are-checked-in-the-database). Credits follow [2_credits.md §4](../design/2_credits.md#4-data-model) instead. Disc titles have no design doc: [Disc titles](#disc-titles) below explains them. Every column's type is in `slunk-be/src/repo/db_types.ts`, which is generated from the database.
+The reasoning behind it is in [design §4](../design/1_introduction.md#4-data-model), and its appendices [A](../design/1_introduction.md#appendix-a-more-integrity-rules-in-the-database) and [D](../design/1_introduction.md#appendix-d-tag-values-are-checked-in-the-database). Credits follow [2_credits.md §4](../design/2_credits.md#4-data-model) instead, and alternate names [3_alternate_names.md §4](../design/3_alternate_names.md#4-data-model). Disc titles have no design doc: [Disc titles](#disc-titles) below explains them. Every column's type is in `slunk-be/src/repo/db_types.ts`, which is generated from the database.
 
 How to connect, migrate and seed: [development/backend.md](../development/backend.md#the-database).
 
@@ -30,8 +31,10 @@ How to connect, migrate and seed: [development/backend.md](../development/backen
 | Table | Holds |
 |---|---|
 | `files` | Registered files: `path` (relative to the database's folder), `type` (`music`, `image` or `other`), `size_bytes`, `mtime`, `sha256` |
-| `artists` | `name`, and `picture` → `files` |
-| `labels` | `name`, and `picture` → `files` (the logo) |
+| `artists` | `name`, its language `name_language`, and `picture` → `files` |
+| `labels` | `name`, its language `name_language`, and `picture` → `files` (the logo) |
+| `artist_alternate_names` | Other names an artist goes by, with `position`: other spellings ("ALIKA"), initials, names in other scripts ("福居良"). Each has a `language`, a `note`, and `real_name` (0 or 1) for a legal or birth name. |
+| `label_alternate_names` | Other names a label goes by, built the same way, without `real_name` |
 | `releases` | `title`, `release_date` with `release_date_precision`, `catalog_number`, `cover_picture` → `files`, `various_artists` |
 | `tracks` | `title`, `duration_ms`, `track_number`, `cd_number` (default 1), `release_id`, and `file_id` (its audio) |
 | `release_disc_titles` | A disc's own title, as printed: `release_id`, `cd_number` and `title`. Only discs with a title have a row. |
@@ -60,9 +63,12 @@ How to connect, migrate and seed: [development/backend.md](../development/backen
 - **Text:** these values are non-empty, with no leading or trailing spaces:
   - names: of artists, labels, formats, media and tag definitions;
   - titles: of releases, tracks and discs;
+  - alternate names, and their notes;
   - credit lines' `role`, `catalog_number`, `release_text_tags.value`, `track_text_tags.value` and file link notes.
 
   A nullable one (`catalog_number`, `note`) may also be NULL.
+- **Languages:** `name_language` and `language` are NULL (unknown), or a BCP 47 tag in canonical shape: a 2- or 3-letter lowercase language, then letters, digits and single hyphens, not ending in one, like `ja` or `ja-Latn`. `und` isn't allowed: NULL is what unknown means.
+- **Alternate names compare exactly,** case included, so "ALIKA" and "Alika" are different names. `(artist_id, name)` and `(label_id, name)` are unique. `real_name` is 0 or 1.
 - **Unique ignoring case** (`COLLATE NOCASE`):
   - names of formats, media and tag definitions;
   - a credit line's role, per release or track;
@@ -138,7 +144,8 @@ Foreign keys decide what a delete does.
   - a release: its artists, labels, formats, media, credit lines, disc titles, file links and tag values;
   - a track: its artists, credit lines, file links and tag values;
   - a credit line: its artists;
-  - an artist: its file links.
+  - an artist: its alternate names and file links;
+  - a label: its alternate names.
 
 ## Starter rows
 
@@ -152,3 +159,6 @@ The baseline migration adds these rows. Nothing depends on them, so the user can
 - A tag name used by another type ("Score" as both a text and a real number tag) is allowed by the database. The app refuses it, ignoring case.
 - Paths are only checked to be non-empty and relative. Normalizing them (forward slashes, no `./` or `a/../b`) is up to the app.
 - `updated_at` isn't updated automatically.
+- An alternate name can't be the same as its artist's or label's main name, except an artist's real name.
+- Text is in Unicode NFC. SQLite can't normalize it, so the app does it before saving.
+- A language tag's canonical form, beyond its shape.

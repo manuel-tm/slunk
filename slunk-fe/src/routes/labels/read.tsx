@@ -1,6 +1,7 @@
 import { useMutation, useQuery } from "@apollo/client/react"
 import { useParams } from "react-router"
 
+import { AlternateNames } from "@/components/alternate-names"
 import { ButtonLink } from "@/components/button-link"
 import { CoverChooser } from "@/components/cover-chooser"
 import { DeleteButton } from "@/components/delete-button"
@@ -12,6 +13,7 @@ import { ReleaseTable } from "@/components/release-table"
 import { Skeleton } from "@/components/ui/skeleton"
 import { graphql } from "@/gql"
 import { useListParams } from "@/hooks/use-list-params"
+import { textProps } from "@/lib/languages"
 import { NotFound } from "@/routes/not-found"
 
 const LabelQuery = graphql(`
@@ -19,6 +21,11 @@ const LabelQuery = graphql(`
     label(id: $id) {
       id
       name
+      nameLanguage
+      alternateNames {
+        name
+        language
+      }
       picture {
         id
       }
@@ -37,6 +44,7 @@ const LabelQuery = graphql(`
         artists {
           id
           name
+          nameLanguage
         }
         formats {
           id
@@ -87,7 +95,10 @@ export function LabelRead() {
       <PageHeader
         crumbs={[
           { label: "Labels", to: "/labels" },
-          { label: label ? `${label.name} (${label.id})` : id },
+          {
+            label: label ? `${label.name} (${label.id})` : id,
+            lang: label?.nameLanguage,
+          },
         ]}
       >
         {label && (
@@ -121,9 +132,15 @@ export function LabelRead() {
                   setPicture({ variables: { id, picture } })
                 }
               />
-              <h1 className="font-heading text-2xl font-semibold">
-                {label.name}
-              </h1>
+              <div className="flex flex-col gap-2">
+                <h1
+                  className="font-heading text-2xl font-semibold"
+                  {...textProps(label.nameLanguage)}
+                >
+                  {label.name}
+                </h1>
+                <AlternateNames names={label.alternateNames} />
+              </div>
             </div>
             <div className="flex justify-end">
               <Pager

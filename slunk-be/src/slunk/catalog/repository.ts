@@ -8,7 +8,10 @@ import type { TagFilter, TagsRepository } from "../tagging/repository.ts"
 
 export type Artist = {
   id: number
+  /** The main name (3_alternate_names.md §4.2) */
   name: string
+  /** A BCP 47 tag, or null when it isn't known */
+  nameLanguage: string | null
   /** A file id */
   picture: number | null
   insertedAt: number
@@ -17,6 +20,25 @@ export type Artist = {
 
 /** Labels have the same shape: `picture` is the logo. */
 export type Label = Artist
+
+/**
+ * A name an artist or label goes by, besides its main one
+ * (3_alternate_names.md §4.2). A label's is never a real name.
+ */
+export type AlternateName = {
+  id: number
+  name: string
+  /** A BCP 47 tag, or null when it isn't known */
+  language: string | null
+  /** A legal or birth name */
+  realName: boolean
+  note: string | null
+}
+
+/** An alternate name to save. With an id, it's one the owner has. */
+export type AlternateNameValues = Omit<AlternateName, "id"> & {
+  id?: number | null
+}
 
 export type Release = {
   id: number
@@ -69,10 +91,15 @@ export type ArtistCredit = {
 
 export type FormatCount = { formatId: number; count: number }
 
-export type NamedValues = { name: string; picture: number | null }
+export type NamedValues = {
+  name: string
+  nameLanguage: string | null
+  picture: number | null
+}
 
-/** Artists and labels: named entities with a picture. */
+/** Artists and labels: named entities with a picture, and alternate names. */
 export interface NamedRepository<T> {
+  /** The search matches the main name or an alternate name */
   list(query: ListQuery<"name">): Promise<Page<T>>
   get(id: number): Promise<T | null>
   getMany(ids: readonly number[]): Promise<T[]>
@@ -81,6 +108,15 @@ export interface NamedRepository<T> {
   insert(values: NamedValues): Promise<T>
   update(id: number, values: Partial<NamedValues>): Promise<T | null>
   delete(id: number): Promise<void>
+  /** Alternate names by owner, in order */
+  alternateNamesOf(
+    ids: readonly number[]
+  ): Promise<Map<number, AlternateName[]>>
+  /**
+   * Replaces an owner's alternate names, in order. A name with an id keeps its
+   * row, the others are added, and the names left out are deleted.
+   */
+  setAlternateNames(id: number, names: AlternateNameValues[]): Promise<void>
 }
 
 export interface ArtistsRepository extends NamedRepository<Artist> {
@@ -203,6 +239,8 @@ export interface StatsRepository {
     labels: number
     durationMs: number
   }>
+  /** Language tags in use on names, the most used first */
+  languages(): Promise<string[]>
 }
 
 /** Every repository the catalog needs, and a way to use them in one transaction. */

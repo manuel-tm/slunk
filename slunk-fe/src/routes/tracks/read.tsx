@@ -28,16 +28,19 @@ const TrackQuery = graphql(`
       performers {
         id
         name
+        nameLanguage
       }
       features {
         id
         name
+        nameLanguage
       }
       credits {
         role
         artists {
           id
           name
+          nameLanguage
         }
       }
       file {

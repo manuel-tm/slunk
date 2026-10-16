@@ -1,6 +1,7 @@
 import { useState } from "react"
 
 import { Cover } from "@/components/cover"
+import { textProps } from "@/lib/languages"
 import {
   Combobox,
   ComboboxContent,
@@ -13,8 +14,16 @@ import {
 /**
  * Something a picker offers: an id, and what it shows. An option with an
  * `image` key shows it before the name, or a placeholder when it's null.
+ * `lang` is the name's language, and `detail` shows after it, muted: the
+ * alternate name a search matched (3_alternate_names.md §7.4).
  */
-export type Option = { id: string; name: string; image?: { id: string } | null }
+export type Option = {
+  id: string
+  name: string
+  image?: { id: string } | null
+  lang?: string | null
+  detail?: string | null
+}
 
 const CREATE = "__create__"
 
@@ -25,6 +34,8 @@ export type PickerProps<T extends Option = Option> = {
   exclude?: string[]
   placeholder?: string
   id?: string
+  /** For a picker without a visible label, like one in a table row */
+  "aria-label"?: string
   disabled?: boolean
 }
 
@@ -38,6 +49,7 @@ export function Picker<T extends Option>({
   exclude = [],
   placeholder,
   id,
+  "aria-label": ariaLabel,
   disabled,
   options,
   onQuery,
@@ -58,8 +70,11 @@ export function Picker<T extends Option>({
   const [creating, setCreating] = useState(false)
   const typed = query.trim()
   const items = options.filter((option) => !exclude.includes(option.id))
-  const exact = options.some(
-    (option) => option.name.toLowerCase() === typed.toLowerCase()
+  // An alternate name counts, so the picker doesn't offer a second artist
+  const exact = options.some((option) =>
+    [option.name, option.detail].some(
+      (name) => name?.toLowerCase() === typed.toLowerCase()
+    )
   )
   if (onCreate && typed && !exact) {
     items.push({ id: CREATE, name: createLabel(typed) } as T)
@@ -90,6 +105,7 @@ export function Picker<T extends Option>({
     >
       <ComboboxInput
         id={id}
+        aria-label={ariaLabel}
         placeholder={placeholder ?? `Search ${noun}s`}
         showClear={value !== null}
         className="w-full"
@@ -102,7 +118,12 @@ export function Picker<T extends Option>({
               {option.image !== undefined && (
                 <Cover file={option.image} alt="" className="size-8 shrink-0" />
               )}
-              {option.name}
+              <span {...textProps(option.lang)}>{option.name}</span>
+              {option.detail && (
+                <span className="text-muted-foreground" dir="auto">
+                  · {option.detail}
+                </span>
+              )}
             </ComboboxItem>
           )}
         </ComboboxList>

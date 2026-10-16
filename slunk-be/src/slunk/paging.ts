@@ -42,9 +42,12 @@ export function sortOf<S extends string>(
   return { sort: column as S | "id", descending: sort.startsWith("-") }
 }
 
-/** The search text, or undefined when there's nothing to search for. */
+/**
+ * The search text, or undefined when there's nothing to search for. It's in
+ * NFC, like saved text, so either form of "é" finds the other.
+ */
 export function searchOf(q: string | null | undefined): string | undefined {
-  return q?.trim() || undefined
+  return q?.normalize("NFC").trim() || undefined
 }
 
 /** Escapes a LIKE pattern, to use with `escape '\'`. */

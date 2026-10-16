@@ -13,6 +13,7 @@ import {
   type TagValueRow,
   TAG_TYPES,
 } from "./tagging/repository.ts"
+import { cleanText } from "./text.ts"
 
 export type Tagging = ReturnType<typeof createTagging>
 
@@ -136,7 +137,7 @@ export function createTagging({ store }: { store: TaggingStore }) {
       store.tags.getMany(type, ids),
 
     async createTag(type: TagType, input: TagInput) {
-      const name = input.name.trim()
+      const name = cleanText(input.name)
       return store.transaction(async (tx) => {
         await checkName(tx, type, name)
         return tx.tags.insert(type, { name, multiple: input.multiple })
@@ -145,7 +146,7 @@ export function createTagging({ store }: { store: TaggingStore }) {
 
     /** Renames a tag, or switches it between single and multiple values. */
     async updateTag(type: TagType, id: number, input: TagInput) {
-      const name = input.name.trim()
+      const name = cleanText(input.name)
       return store.transaction(async (tx) => {
         const current = await tx.tags.get(type, id)
         if (!current) throw notFound(type, id)
@@ -288,7 +289,7 @@ export function createTagging({ store }: { store: TaggingStore }) {
 /** A value as the user typed it, stored by its tag's type. */
 function parseValue(tag: Tag, text: string): TagValue {
   try {
-    if (tag.type === "text") return text.trim()
+    if (tag.type === "text") return cleanText(text)
     if (tag.type === "number") return parseNumber(text)
     return parseDate(text).epoch
   } catch (error) {
@@ -320,7 +321,7 @@ function sameValueKey(value: TagValue): string {
 function filterOf(input: TagFilterInput): TagFilter {
   const { type, tagId } = input
   const given = (text: string | null | undefined) =>
-    text?.trim() ? text.trim() : undefined
+    text?.trim() ? cleanText(text) : undefined
   const equals = given(input.equals)
   const contains = given(input.contains)
   const min = given(input.min)

@@ -2,7 +2,15 @@ import { useMutation, useQuery } from "@apollo/client/react"
 import { useState } from "react"
 import { useNavigate, useParams } from "react-router"
 
+import {
+  type AlternateNameRow,
+  alternateNameRow,
+  AlternateNamesEditor,
+  alternateNamesValid,
+  labelNamesInput,
+} from "@/components/alternate-names-editor"
 import { ButtonLink } from "@/components/button-link"
+import { LanguagePicker } from "@/components/language-picker"
 import { PageHeader } from "@/components/page-header"
 import type { Option } from "@/components/picker"
 import { FilePicker } from "@/components/pickers"
@@ -17,6 +25,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { graphql } from "@/gql"
+import { textProps } from "@/lib/languages"
 import { NotFound } from "@/routes/not-found"
 
 const LabelFormQuery = graphql(`
@@ -24,6 +33,12 @@ const LabelFormQuery = graphql(`
     label(id: $id) {
       id
       name
+      nameLanguage
+      alternateNames {
+        name
+        language
+        note
+      }
       picture {
         id
         path
@@ -45,6 +60,12 @@ const UpdateLabel = graphql(`
     updateLabel(id: $id, input: $input) {
       id
       name
+      nameLanguage
+      alternateNames {
+        name
+        language
+        note
+      }
       picture {
         id
       }
@@ -72,6 +93,7 @@ export function LabelForm() {
             ? [
                 {
                   label: label ? `${label.name} (${label.id})` : id,
+                  lang: label?.nameLanguage,
                   to: `/labels/${id}`,
                 },
                 { label: "Update" },
@@ -79,7 +101,7 @@ export function LabelForm() {
             : [{ label: "New" }]),
         ]}
       />
-      <div className="max-w-xl p-4">
+      <div className="max-w-3xl p-4">
         {error ? (
           <QueryError error={error} title="Can't load the label" />
         ) : id && !label ? (
@@ -88,6 +110,8 @@ export function LabelForm() {
           <Form
             id={id}
             initialName={label?.name ?? ""}
+            initialLanguage={label?.nameLanguage ?? null}
+            initialNames={(label?.alternateNames ?? []).map(alternateNameRow)}
             initialPicture={
               label?.picture
                 ? { id: label.picture.id, name: label.picture.path }
@@ -103,14 +127,20 @@ export function LabelForm() {
 function Form({
   id,
   initialName,
+  initialLanguage,
+  initialNames,
   initialPicture,
 }: {
   id?: string
   initialName: string
+  initialLanguage: string | null
+  initialNames: AlternateNameRow[]
   initialPicture: Option | null
 }) {
   const navigate = useNavigate()
   const [name, setName] = useState(initialName)
+  const [nameLanguage, setNameLanguage] = useState(initialLanguage)
+  const [names, setNames] = useState(initialNames)
   const [picture, setPicture] = useState(initialPicture)
   const [create, created] = useMutation(CreateLabel)
   const [update, updated] = useMutation(UpdateLabel)
@@ -120,7 +150,12 @@ function Form({
     <form
       onSubmit={async (event) => {
         event.preventDefault()
-        const input = { name, pictureId: picture?.id ?? null }
+        const input = {
+          name,
+          nameLanguage,
+          alternateNames: labelNamesInput(names),
+          pictureId: picture?.id ?? null,
+        }
         try {
           const saved = id
             ? (await update({ variables: { id, input } })).data!.updateLabel
@@ -135,14 +170,35 @@ function Form({
         {error && <QueryError error={error} title="Can't save" />}
         <Field>
           <FieldLabel htmlFor="name">Name</FieldLabel>
-          <Input
-            id="name"
-            value={name}
-            required
-            onChange={(e) => setName(e.target.value)}
-          />
+          <div className="grid grid-cols-[1fr_14rem] gap-2">
+            <Input
+              id="name"
+              value={name}
+              required
+              {...textProps(nameLanguage)}
+              onChange={(e) => setName(e.target.value)}
+            />
+            <LanguagePicker
+              aria-label="Language of the name"
+              value={nameLanguage}
+              onChange={setNameLanguage}
+            />
+          </div>
           <FieldDescription>
             As printed on the sleeve. Two labels can share a name.
+          </FieldDescription>
+        </Field>
+        <Field>
+          <FieldLabel>Alternate names</FieldLabel>
+          <AlternateNamesEditor
+            main={name}
+            names={names}
+            onChange={setNames}
+            realNames={false}
+          />
+          <FieldDescription>
+            Names in other scripts (トリオレコード) and former names. Searching
+            finds the label by any of them.
           </FieldDescription>
         </Field>
         <Field>
@@ -155,7 +211,14 @@ function Form({
           />
         </Field>
         <div className="flex gap-2">
-          <Button type="submit" disabled={created.loading || updated.loading}>
+          <Button
+            type="submit"
+            disabled={
+              created.loading ||
+              updated.loading ||
+              !alternateNamesValid(name, names, false)
+            }
+          >
             Save
           </Button>
           <ButtonLink variant="outline" to={id ? `/labels/${id}` : "/labels"}>

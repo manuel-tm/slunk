@@ -2,11 +2,12 @@
 
 > Keep this page up to date: any change to the frontend's stack, structure or conventions updates it in the same change.
 
-The frontend implements the whole base design ([1_introduction.md](../design/1_introduction.md), phases 0 to 4), with credits as lines from phase 0 of [2_credits.md](../design/2_credits.md):
+The frontend implements the whole base design ([1_introduction.md](../design/1_introduction.md), phases 0 to 4), with credits as lines from phase 0 of [2_credits.md](../design/2_credits.md), and alternate names from phase 0 of [3_alternate_names.md](../design/3_alternate_names.md):
 - the app shell (sidebar with the Import button, page header) and a "not found" page;
 - the dashboard: the backend's status, the catalog's totals, and the newest releases;
 - the files pages: list, register, read and update;
 - the catalog's pages: releases (with the release page and its edit tabs), artists (with their tabs), tracks, labels, release formats and release media;
+- alternate names of artists and labels, and the language of each name;
 - tags: their definitions' pages, a release's Tags tab, its tags on the release page, a track's tags, and tag filters on the release and track lists;
 - bulk edits on the release list: setting or removing a tag on many releases;
 - the import: a release built from a folder, step by step;
@@ -78,6 +79,10 @@ slunk-fe/
       chip-list.tsx        a compact picked list, for table rows
       credits-editor.tsx   credit lines: a role, then its artists
       file-links-editor.tsx  file links, each with a note
+      alternate-names-editor.tsx  an artist's or label's alternate names
+      alternate-names.tsx  alternate names under a name, and the one a
+                           search matched
+      language-picker.tsx  a language tag, by name or tag
       file-uses.tsx        what uses a file, each linking to it
       tag-fields.tsx       a tag definition's fields, and the new-tag dialog
       tag-value-input.tsx  a tag value, suggesting a text tag's values
@@ -105,6 +110,8 @@ slunk-fe/
     lib/
       apollo.ts            the Apollo client, and its cache's type policies
       format.ts            sizes, durations, dates, release dates, roles
+      languages.ts         language names, tags, and lang/dir for names
+      names.ts             the alternate name a search matched
       tags.ts              tag types, values, and the list's tag filters
       utils.ts             cn() helper
 ```
@@ -120,6 +127,8 @@ slunk-fe/
 - **Wide tables** scroll inside the page: `SidebarInset` has `min-w-0`, so a table can't widen the page past the window.
 - **Unknown ids:** a read or update page whose query returns null renders `NotFound` (design §7.2).
 - **Names** of artists and labels, wherever they're listed, go through `Names`, which joins them with commas: "U2, Green Day". An "&" is only ever part of a name, as in "Simon & Garfunkel".
+- **Languages of names** ([3_alternate_names.md §7.1](../design/3_alternate_names.md#71-showing-names-and-titles)): a shown name gets `textProps(language)` from `lib/languages.ts`, which sets `lang` to its language and `dir="auto"`. `lang` picks the glyphs (Japanese and Chinese share code points but not shapes), and `dir="auto"` keeps a right-to-left name from moving the dashes and commas around it. So a query that shows an artist's or label's name also asks for `nameLanguage`. `Names` does it for each name, a crumb takes a `lang`, and a picker option one too. `languageName()` names a tag with the browser's `Intl.DisplayNames`: `ja-Latn` is "Japanese (Latin)".
+- **Alternate names** show under an artist's or label's name on its page (`AlternateNames`): "Real name", then "Other names", each with its language. In the artist and label lists, a row that a search found by an alternate name shows that name under the main one (`MatchedName`), and the pickers show it after the option's name, muted.
 - **Links:** use React Router's `Link`.
   - shadcn components built on Base UI take it through their `render` prop: `<SidebarMenuButton render={<Link to="/" />}>`.
   - For a link that looks like a button, use `ButtonLink`. Don't render a `Link` inside `Button`: Base UI then gives the link `role="button"`, so assistive tech announces a button.
@@ -161,9 +170,12 @@ Lists follow design §7.2:
 - **Pickers** (design §7.2): artists, labels, formats, media, releases, files and tags are chosen with the pickers in `pickers.tsx`, each a `Picker` that searches the backend as the user types and offers the first 20 matches. Except for files and releases, a picker also offers to create what was typed ("Create artist 'Robbie Nevil'"). Each picker owns its query, so its results stay typed.
   - `Picker` is generic over its option type, so an option can carry more than an id and a name. A `TagOption` also has the tag's type, its id within the type, and whether it's multiple. Its `id` is `type:id`, since ids repeat across types.
   - An option with an `image` shows it before its name, or a placeholder when it's null. The artist and release pickers ask for one, aliasing the field as they alias the name: `image: picture { id }`, `image: cover { id }`.
+  - An option's `lang` is its name's language, and its `detail` shows after the name, muted: the artist and label pickers set it to the alternate name the search matched. Typing an alternate name exactly counts as an exact match, so the picker doesn't offer to create a second artist with it.
   - `TagPicker` with `creatable` asks for the rest of a new tag in a dialog (`NewTagDialog`): its type, and single or multiple. Cancelling it creates nothing, since `onCreate` can return null.
   - `TagValuePicker` adds a value to a multi-value text tag: one that other releases already have, the most used first, or what was typed ("Add 'Funk'"). A single text value (`TagValueInput`) suggests the same values through a `<datalist>`.
 - **Ordered lists** (release artists, labels, formats, media, a track's artists and features) use `OrderedList`, whose order sets `position`. A track row uses the compact `ChipList`. File links use `FileLinksEditor`.
+- **Alternate names** use `AlternateNamesEditor`, in the artist and label forms: a row per name, with its language, a note, and for an artist whether it's a real name. A name listed twice, or the same as the main name (unless it's a real name), is marked, and `alternateNamesValid()` keeps the form from saving until it's fixed. Names compare exactly, case included. `artistNamesInput()` and `labelNamesInput()` turn the rows into the API's inputs, with each saved name's id.
+- **Languages** are picked with `LanguagePicker`, a `Picker` with no backend search of its own: it offers the tags in use first (`languages`), then every ISO 639-1 language and a few script variants (`LANGUAGES`), matched by name or tag. Any other valid tag can be typed in ("Use the tag ja-Latn-hepburn"), and the backend stores it in canonical form.
 - **Credits** use `CreditsEditor`, a row per line ([2_credits.md §7](../design/2_credits.md#7-frontend)):
   - The role is a text field, typed as printed. It suggests every spelling in use, the most used first, through a `<datalist>` (`useCreditRoles`). It only asks while it has focus, so a release with many lines doesn't send a query per line.
   - The line's artists are chips, each with a button to move it earlier and one to remove it, then a picker that adds one.

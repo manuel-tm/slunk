@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { roleKey } from "@/lib/format"
+import { textProps } from "@/lib/languages"
 
 /** A credit line: a role as printed, and the artists who hold it, in order. */
 export type CreditLine = { role: string; artists: Option[] }
@@ -123,7 +124,7 @@ function LineRow({
                   <ArrowLeftIcon className="size-3" />
                 </button>
               )}
-              {artist.name}
+              <span {...textProps(artist.lang)}>{artist.name}</span>
               <button
                 type="button"
                 aria-label={`Remove ${artist.name} from ${label}`}

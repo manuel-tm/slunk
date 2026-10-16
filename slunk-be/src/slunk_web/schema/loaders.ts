@@ -26,6 +26,8 @@ export function createLoaders({
     file: byId(media.filesByIds),
     artist: byId(catalog.artistsByIds),
     label: byId(catalog.labelsByIds),
+    artistNames: grouped(catalog.artistNamesOf),
+    labelNames: grouped(catalog.labelNamesOf),
     release: byId(catalog.releasesByIds),
     track: byId(catalog.tracksByIds),
     format: list("release_formats"),
