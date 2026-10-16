@@ -1,6 +1,7 @@
 import { ArrowDownIcon, ArrowUpIcon, XIcon } from "lucide-react"
 import { type ReactNode, useState } from "react"
 
+import { CreditedAsInput } from "@/components/credited-as"
 import type { Option, PickerProps } from "@/components/picker"
 import { Button } from "@/components/ui/button"
 import { textProps } from "@/lib/languages"
@@ -64,16 +65,19 @@ export function RowActions({
 
 /**
  * Picked rows, in order: the order sets `position` (design §7.2). A picker
- * underneath adds one.
+ * underneath adds one. With `credited`, the rows are artists, each with the
+ * name it's credited with (3_alternate_names.md §7.6).
  */
 export function OrderedList({
   items,
   onChange,
   picker,
+  credited = false,
 }: {
   items: Option[]
   onChange: (items: Option[]) => void
   picker: (props: PickerProps) => ReactNode
+  credited?: boolean
 }) {
   // A new key clears the picker after each pick
   const [pickerKey, setPickerKey] = useState(0)
@@ -88,6 +92,19 @@ export function OrderedList({
           <span className="flex-1" {...textProps(item.lang)}>
             {item.name}
           </span>
+          {credited && (
+            <CreditedAsInput
+              artist={item}
+              className="h-7 w-56"
+              onChange={(creditedAs) =>
+                onChange(
+                  items.map((i, place) =>
+                    place === index ? { ...i, creditedAs } : i
+                  )
+                )
+              }
+            />
+          )}
           <RowActions
             label={item.name}
             index={index}

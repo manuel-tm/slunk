@@ -1,8 +1,10 @@
 import { artistUrl, Names } from "@/components/names"
+import type { CreditedLink } from "@/lib/credited"
 
 type CreditLine = {
   role: string
-  artists: { id: string; name: string }[]
+  /** As credited: "J. Van Heusen" links to Jimmy Van Heusen */
+  artists: CreditedLink[]
 }
 
 /** Credit lines, in order: "Engineer – Paul Barrett, Robbie Adams". */

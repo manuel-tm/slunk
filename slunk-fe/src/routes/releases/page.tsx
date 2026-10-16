@@ -33,9 +33,15 @@ const ReleaseQueryDocument = graphql(`
         id
       }
       artists {
-        id
-        name
-        nameLanguage
+        artist {
+          id
+          name
+          nameLanguage
+        }
+        creditedAs {
+          name
+          language
+        }
       }
       labels {
         id
@@ -53,9 +59,15 @@ const ReleaseQueryDocument = graphql(`
       credits {
         role
         artists {
-          id
-          name
-          nameLanguage
+          artist {
+            id
+            name
+            nameLanguage
+          }
+          creditedAs {
+            name
+            language
+          }
         }
       }
       tags {
@@ -81,21 +93,39 @@ const ReleaseQueryDocument = graphql(`
           path
         }
         artists {
-          id
-          name
-          nameLanguage
+          artist {
+            id
+            name
+            nameLanguage
+          }
+          creditedAs {
+            name
+            language
+          }
         }
         features {
-          id
-          name
-          nameLanguage
+          artist {
+            id
+            name
+            nameLanguage
+          }
+          creditedAs {
+            name
+            language
+          }
         }
         credits {
           role
           artists {
-            id
-            name
-            nameLanguage
+            artist {
+              id
+              name
+              nameLanguage
+            }
+            creditedAs {
+              name
+              language
+            }
           }
         }
       }

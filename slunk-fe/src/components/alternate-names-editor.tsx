@@ -18,6 +18,8 @@ export type AlternateNameRow = {
   language: string | null
   realName: boolean
   note: string
+  /** Artist links credited with it, for a saved artist name */
+  uses: number | null
 }
 
 let lastKey = 0
@@ -29,6 +31,7 @@ export function alternateNameRow(name: {
   language?: string | null
   realName?: boolean
   note?: string | null
+  uses?: number | null
 }): AlternateNameRow {
   lastKey += 1
   return {
@@ -38,11 +41,14 @@ export function alternateNameRow(name: {
     language: name.language ?? null,
     realName: name.realName ?? false,
     note: name.note ?? "",
+    uses: name.uses ?? null,
   }
 }
 
 // Names compare as the backend saves them: NFC, trimmed, case included
-const clean = (text: string) => text.normalize("NFC").trim()
+export const cleanName = (text: string) => text.normalize("NFC").trim()
+
+const clean = cleanName
 
 /** What's wrong with each row, or null. A blank row is left out on save. */
 function rowProblems(
@@ -99,20 +105,23 @@ export function labelNamesInput(rows: AlternateNameRow[]) {
 
 /**
  * An artist's or label's alternate names, in order: each with a language
- * and a note, and for an artist, whether it's a real name. A name can't be
- * listed twice, or be the main name unless it's a real name.
+ * and a note, and for an artist, whether it's a real name and how many links
+ * it's credited on. A name can't be listed twice, or be the main name unless
+ * it's a real name. With `onMakeMain`, each row can become the main name.
  */
 export function AlternateNamesEditor({
   main,
   names,
   onChange,
   realNames,
+  onMakeMain,
 }: {
   main: string
   names: AlternateNameRow[]
   onChange: (names: AlternateNameRow[]) => void
   /** Artists have real names, labels don't */
   realNames: boolean
+  onMakeMain?: (row: AlternateNameRow) => void
 }) {
   const [adding, setAdding] = useState("")
   const problems = rowProblems(main, names, realNames)
@@ -133,8 +142,8 @@ export function AlternateNamesEditor({
             className={cn(
               "grid items-center gap-2 text-xs",
               realNames
-                ? "grid-cols-[1fr_12rem_auto_1fr_auto]"
-                : "grid-cols-[1fr_12rem_1fr_auto]"
+                ? "grid-cols-[1fr_12rem_auto_1fr_auto_auto]"
+                : "grid-cols-[1fr_12rem_1fr_auto_auto]"
             )}
           >
             <Input
@@ -163,6 +172,30 @@ export function AlternateNamesEditor({
               value={row.note}
               onChange={(e) => update(index, { note: e.target.value })}
             />
+            <div
+              className={cn(
+                "flex items-center justify-end gap-2 whitespace-nowrap",
+                // A fixed width keeps the rows' columns lined up
+                onMakeMain && "w-36"
+              )}
+            >
+              {row.uses !== null && (
+                <span className="text-muted-foreground tabular-nums">
+                  {row.uses === 1 ? "1 use" : `${row.uses} uses`}
+                </span>
+              )}
+              {onMakeMain && (
+                <Button
+                  type="button"
+                  size="xs"
+                  variant="ghost"
+                  disabled={!clean(row.name)}
+                  onClick={() => onMakeMain(row)}
+                >
+                  Make main
+                </Button>
+              )}
+            </div>
             <RowActions
               label={row.name || "the name"}
               index={index}

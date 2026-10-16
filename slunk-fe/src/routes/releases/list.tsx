@@ -58,9 +58,15 @@ const ReleasesQuery = graphql(`
           id
         }
         artists {
-          id
-          name
-          nameLanguage
+          artist {
+            id
+            name
+            nameLanguage
+          }
+          creditedAs {
+            name
+            language
+          }
         }
         formats {
           id

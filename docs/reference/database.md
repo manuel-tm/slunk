@@ -12,6 +12,7 @@ This is the schema as built, by these migrations in `slunk-be/priv/repo/migratio
 | `20261015192802_free_text_credit_roles` | Credit lines: `release_credits` and `track_credits` again, now with a free-text `role`, and `artists_release_credits` and `artists_track_credits`. It drops `credit_roles` and the old credits. |
 | `20261015195853_add_disc_titles` | Disc titles: `release_disc_titles`, and the triggers that keep each title on a disc with tracks |
 | `20261016144030_add_alternate_names` | Alternate names: `artist_alternate_names` and `label_alternate_names`, and `name_language` on `artists` and `labels` |
+| `20261016151144_add_credited_names` | Credited names: `credited_name_id` on the four artist link tables, which it rebuilds |
 
 The reasoning behind it is in [design §4](../design/1_introduction.md#4-data-model), and its appendices [A](../design/1_introduction.md#appendix-a-more-integrity-rules-in-the-database) and [D](../design/1_introduction.md#appendix-d-tag-values-are-checked-in-the-database). Credits follow [2_credits.md §4](../design/2_credits.md#4-data-model) instead, and alternate names [3_alternate_names.md §4](../design/3_alternate_names.md#4-data-model). Disc titles have no design doc: [Disc titles](#disc-titles) below explains them. Every column's type is in `slunk-be/src/repo/db_types.ts`, which is generated from the database.
 
@@ -38,11 +39,11 @@ How to connect, migrate and seed: [development/backend.md](../development/backen
 | `releases` | `title`, `release_date` with `release_date_precision`, `catalog_number`, `cover_picture` → `files`, `various_artists` |
 | `tracks` | `title`, `duration_ms`, `track_number`, `cd_number` (default 1), `release_id`, and `file_id` (its audio) |
 | `release_disc_titles` | A disc's own title, as printed: `release_id`, `cd_number` and `title`. Only discs with a title have a row. |
-| `artists_releases` | Who a release is by, with `position` |
-| `artists_tracks` | Who performs a track, with `featured` and `position` |
+| `artists_releases` | Who a release is by, with `position`, and `credited_name_id` (below) |
+| `artists_tracks` | Who performs a track, with `featured`, `position` and `credited_name_id` |
 | `labels_releases` | A release's labels, with `position` |
 | `release_credits`, `track_credits` | Credit lines: a `role` as printed on a release or track ("Mixed By"), with `position`, the line's order |
-| `artists_release_credits`, `artists_track_credits` | The artists on each credit line, with `position`, their order on the line, from 0 |
+| `artists_release_credits`, `artists_track_credits` | The artists on each credit line, with `position`, their order on the line, from 0, and `credited_name_id` |
 | `release_formats`, `release_media` | Lists the user manages |
 | `release_formats_releases`, `release_media_releases` | A release's formats and media |
 | `files_releases`, `artists_files`, `files_tracks` | File links, each with an optional `note` |
@@ -85,6 +86,7 @@ How to connect, migrate and seed: [development/backend.md](../development/backen
   - `track_number > 0`, `cd_number > 0`, `duration_ms >= 0`.
 - **Disc titles:** `(release_id, cd_number)` is unique, so a disc has one title, and `cd_number > 0`.
 - **Links:** an artist, label, format, medium or file appears at most once per release or track. An artist appears once per credit line, and two artists on a line can't share a `position`. `position >= 0`.
+- **Credited names:** see [Credited names](#credited-names).
 - **Tag values**, on releases and tracks alike:
   - `(release_id, tag_id, value)` and `(track_id, tag_id, value)` are unique;
   - a date tag's value is a day, at midnight UTC, and a number tag's value is finite (triggers below).
@@ -130,6 +132,16 @@ Every credit line has an artist. A line is inserted before its artists, so a def
 - Deleting a line, or its release or track, deletes its artists too.
 - Migrations run with foreign keys off, and the runner's `foreign_key_check` reports a line without artists.
 
+### Credited names
+
+The four artist link tables, `artists_releases`, `artists_tracks`, `artists_release_credits` and `artists_track_credits`, each have `credited_name_id`: the alternate name printed there, like "ALIKA" for Alika ([3_alternate_names.md §4.2](../design/3_alternate_names.md#42-design-decisions)). NULL is the artist's main name.
+- `(artist_id, credited_name_id)` references `artist_alternate_names (artist_id, id)`, so the name is the linked artist's own. SQLite doesn't check a key with a NULL in it. Otherwise the database refuses, with `FOREIGN KEY constraint failed`:
+  - crediting an artist with another artist's name;
+  - moving a credited name to another artist;
+  - changing a link's artist while keeping the old artist's name.
+- A name a link is credited with can't be deleted (RESTRICT). `SET NULL` isn't possible: `artist_id` is part of the key, so it would be set to NULL too.
+- `(artist_id, credited_name_id)` is indexed on each table, which also serves lookups by artist.
+
 ### Deletes
 
 Foreign keys decide what a delete does.
@@ -138,6 +150,7 @@ Foreign keys decide what a delete does.
   - a file used as a track's audio, a cover, a picture or in a file link;
   - a release with tracks;
   - an artist who is a release or track artist, or is credited;
+  - an artist's alternate name that a link is credited with;
   - a label on a release;
   - a format, medium or tag definition in use (a tag is in use on a release or a track).
 - **CASCADE:** deleting a row also deletes the link rows that describe it:

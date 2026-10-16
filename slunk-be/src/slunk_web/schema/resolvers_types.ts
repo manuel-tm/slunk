@@ -1,6 +1,6 @@
 import type { GraphQLResolveInfo } from 'graphql';
 import type { FileRecord as FileRecordModel, FileLink as FileLinkModel } from '../../slunk/media/repository.ts';
-import type { Artist as ArtistModel, Label as LabelModel, AlternateName as AlternateNameModel, Release as ReleaseModel, Track as TrackModel, Credit as CreditModel, ListItem as ListItemModel, Appearance as AppearanceModel, ArtistCredit as ArtistCreditModel, FormatCount as FormatCountModel } from '../../slunk/catalog/repository.ts';
+import type { Artist as ArtistModel, Label as LabelModel, AlternateName as AlternateNameModel, Release as ReleaseModel, Track as TrackModel, Credit as CreditModel, ArtistLink as ArtistLinkModel, ListItem as ListItemModel, Appearance as AppearanceModel, ArtistCredit as ArtistCreditModel, FormatCount as FormatCountModel } from '../../slunk/catalog/repository.ts';
 import type { Tag as TagModel } from '../../slunk/tagging/repository.ts';
 import type { OwnerTag as OwnerTagModel } from '../../slunk/tagging.ts';
 import type { Context } from './context.ts';
@@ -39,6 +39,8 @@ export type Artist = {
   formatCounts: Array<FormatCount>;
   id: Scalars['ID']['output'];
   insertedAt: Scalars['Float']['output'];
+  /** Artist links that show the main name: the ones a rename changes, unless it keeps the old name on them. */
+  mainNameUses: Scalars['Int']['output'];
   /** The main name */
   name: Scalars['String']['output'];
   /** The main name's language: a BCP 47 tag, like ja or ja-Latn. Null when it isn't known. */
@@ -61,6 +63,8 @@ export type ArtistCounts = {
 /** A credit line the artist is on. */
 export type ArtistCredit = {
   __typename?: 'ArtistCredit';
+  /** The name the artist is credited with on the line, when it isn't the main name */
+  creditedAs?: Maybe<ArtistName>;
   release: Release;
   /** As printed */
   role: Scalars['String']['output'];
@@ -69,9 +73,11 @@ export type ArtistCredit = {
 };
 
 export type ArtistInput = {
-  /** Replaces the alternate names, in order. Left out, they stay as they are. */
+  /** Replaces the alternate names, in order. Left out, they stay as they are, except one the main name is renamed to: it's promoted, and goes unless it's a real name. Removing a name that's credited credits its links with the main name. */
   alternateNames?: InputMaybe<Array<ArtistNameInput>>;
   files: Array<FileLinkInput>;
+  /** On a rename, credits the links that showed the old main name with it, as an alternate name, so they keep showing it. */
+  keepOldName: Scalars['Boolean']['input'];
   name: Scalars['String']['input'];
   /** A BCP 47 tag, stored in canonical form: JA-latn becomes ja-Latn. Blank means unknown. */
   nameLanguage?: InputMaybe<Scalars['String']['input']>;
@@ -89,6 +95,8 @@ export type ArtistName = {
   note?: Maybe<Scalars['String']['output']>;
   /** A legal or birth name */
   realName: Scalars['Boolean']['output'];
+  /** Artist links credited with it: as a release artist, a track artist or feature, or on a credit line. */
+  uses: Scalars['Int']['output'];
 };
 
 /** An alternate name. Names are trimmed, a blank one is left out, and none can be given twice or be the main name, except a real name. */
@@ -136,15 +144,30 @@ export type ChangedFile = {
 /** A credit line: a role, as printed, and the artists who hold it, in order. It has no id: release and track credits live in different tables, so their ids would collide. */
 export type Credit = {
   __typename?: 'Credit';
-  artists: Array<Artist>;
+  artists: Array<CreditedArtist>;
   role: Scalars['String']['output'];
 };
 
 export type CreditInput = {
-  /** At least one, in display order. One given twice is kept once. */
-  artistIds: Array<Scalars['ID']['input']>;
+  /** At least one, in display order. One given twice is kept once, as first credited. */
+  artists: Array<CreditedArtistInput>;
   /** As printed. Trimmed, and unique on its release or track, ignoring case. */
   role: Scalars['String']['input'];
+};
+
+/** An artist as credited on a release, a track or a credit line (3_alternate_names.md §4.2). It has no id, so the cache keeps it inside its parent. */
+export type CreditedArtist = {
+  __typename?: 'CreditedArtist';
+  artist: Artist;
+  /** The name printed, when it isn't the artist's main name */
+  creditedAs?: Maybe<ArtistName>;
+};
+
+/** An artist as credited. */
+export type CreditedArtistInput = {
+  artistId: Scalars['ID']['input'];
+  /** As printed. Blank, or the artist's main name, means the main name. A name the artist doesn't have yet is added to its alternate names. Compared exactly, case included. */
+  creditedAs?: InputMaybe<Scalars['String']['input']>;
 };
 
 export type DateTag = Tag & {
@@ -873,8 +896,8 @@ export type QueryTracksArgs = {
 
 export type Release = {
   __typename?: 'Release';
-  /** Who the release is by, in display order. */
-  artists: Array<Artist>;
+  /** Who the release is by, in display order, as credited. */
+  artists: Array<CreditedArtist>;
   blockers: Array<Scalars['String']['output']>;
   catalogNumber?: Maybe<Scalars['String']['output']>;
   cover?: Maybe<File>;
@@ -923,8 +946,8 @@ export type ReleaseFormat = ListItem & {
 };
 
 export type ReleaseInput = {
-  /** In display order, like the other lists */
-  artistIds: Array<Scalars['ID']['input']>;
+  /** In display order, like the other lists. An artist given twice is kept once. */
+  artists: Array<CreditedArtistInput>;
   catalogNumber?: InputMaybe<Scalars['String']['input']>;
   formatIds: Array<Scalars['ID']['input']>;
   labelIds: Array<Scalars['ID']['input']>;
@@ -966,9 +989,9 @@ export type ReleaseSuggestion = {
 
 /** A track of the release: `id` for one it has, else `fileId` or `path` for a new one. */
 export type ReleaseTrackInput = {
-  artistIds: Array<Scalars['ID']['input']>;
+  artists: Array<CreditedArtistInput>;
   cdNumber: Scalars['Int']['input'];
-  featureIds: Array<Scalars['ID']['input']>;
+  features: Array<CreditedArtistInput>;
   fileId?: InputMaybe<Scalars['ID']['input']>;
   id?: InputMaybe<Scalars['ID']['input']>;
   path?: InputMaybe<Scalars['String']['input']>;
@@ -1119,20 +1142,20 @@ export type TextTagValuesArgs = {
 export type Track = {
   __typename?: 'Track';
   /** The track's own performers, without features. */
-  artists: Array<Artist>;
+  artists: Array<CreditedArtist>;
   cdNumber: Scalars['Int']['output'];
   credits: Array<Credit>;
   /** Read from the audio file. Null when it can't be read. */
   durationMs?: Maybe<Scalars['Float']['output']>;
   /** Guests, shown as "(feat. …)". */
-  features: Array<Artist>;
+  features: Array<CreditedArtist>;
   /** The audio file */
   file: File;
   files: Array<FileLink>;
   id: Scalars['ID']['output'];
   insertedAt: Scalars['Float']['output'];
-  /** Who performs it (design §4.3): its own artists. On a regular release with none, the release's artists; on a various-artists release, nobody. */
-  performers: Array<Artist>;
+  /** Who performs it (design §4.3): its own artists. On a regular release with none, the release's artists, as credited there; on a various-artists release, nobody. */
+  performers: Array<CreditedArtist>;
   release: Release;
   /** By tag name. */
   tags: Array<TagValues>;
@@ -1147,10 +1170,10 @@ export type TrackCreditsInput = {
 };
 
 export type TrackInput = {
-  artistIds: Array<Scalars['ID']['input']>;
+  artists: Array<CreditedArtistInput>;
   cdNumber: Scalars['Int']['input'];
   credits: Array<CreditInput>;
-  featureIds: Array<Scalars['ID']['input']>;
+  features: Array<CreditedArtistInput>;
   fileId: Scalars['ID']['input'];
   files: Array<FileLinkInput>;
   releaseId: Scalars['ID']['input'];
@@ -1280,6 +1303,8 @@ export type ResolversTypes = {
   ChangedFile: ResolverTypeWrapper<Omit<ChangedFile, 'file'> & { file: ResolversTypes['File'] }>;
   Credit: ResolverTypeWrapper<CreditModel>;
   CreditInput: CreditInput;
+  CreditedArtist: ResolverTypeWrapper<ArtistLinkModel>;
+  CreditedArtistInput: CreditedArtistInput;
   DateTag: ResolverTypeWrapper<TagModel>;
   DiscTitle: ResolverTypeWrapper<DiscTitle>;
   DiscTitleInput: DiscTitleInput;
@@ -1360,6 +1385,8 @@ export type ResolversParentTypes = {
   ChangedFile: Omit<ChangedFile, 'file'> & { file: ResolversParentTypes['File'] };
   Credit: CreditModel;
   CreditInput: CreditInput;
+  CreditedArtist: ArtistLinkModel;
+  CreditedArtistInput: CreditedArtistInput;
   DateTag: TagModel;
   DiscTitle: DiscTitle;
   DiscTitleInput: DiscTitleInput;
@@ -1435,6 +1462,7 @@ export type ArtistResolvers<ContextType = Context, ParentType extends ResolversP
   formatCounts?: Resolver<Array<ResolversTypes['FormatCount']>, ParentType, ContextType>;
   id?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
   insertedAt?: Resolver<ResolversTypes['Float'], ParentType, ContextType>;
+  mainNameUses?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
   name?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   nameLanguage?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   picture?: Resolver<Maybe<ResolversTypes['File']>, ParentType, ContextType>;
@@ -1449,6 +1477,7 @@ export type ArtistCountsResolvers<ContextType = Context, ParentType extends Reso
 };
 
 export type ArtistCreditResolvers<ContextType = Context, ParentType extends ResolversParentTypes['ArtistCredit'] = ResolversParentTypes['ArtistCredit']> = {
+  creditedAs?: Resolver<Maybe<ResolversTypes['ArtistName']>, ParentType, ContextType>;
   release?: Resolver<ResolversTypes['Release'], ParentType, ContextType>;
   role?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   track?: Resolver<Maybe<ResolversTypes['Track']>, ParentType, ContextType>;
@@ -1460,6 +1489,7 @@ export type ArtistNameResolvers<ContextType = Context, ParentType extends Resolv
   name?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   note?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   realName?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType>;
+  uses?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
 };
 
 export type ArtistPageResolvers<ContextType = Context, ParentType extends ResolversParentTypes['ArtistPage'] = ResolversParentTypes['ArtistPage']> = {
@@ -1487,8 +1517,13 @@ export type ChangedFileResolvers<ContextType = Context, ParentType extends Resol
 };
 
 export type CreditResolvers<ContextType = Context, ParentType extends ResolversParentTypes['Credit'] = ResolversParentTypes['Credit']> = {
-  artists?: Resolver<Array<ResolversTypes['Artist']>, ParentType, ContextType>;
+  artists?: Resolver<Array<ResolversTypes['CreditedArtist']>, ParentType, ContextType>;
   role?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+};
+
+export type CreditedArtistResolvers<ContextType = Context, ParentType extends ResolversParentTypes['CreditedArtist'] = ResolversParentTypes['CreditedArtist']> = {
+  artist?: Resolver<ResolversTypes['Artist'], ParentType, ContextType>;
+  creditedAs?: Resolver<Maybe<ResolversTypes['ArtistName']>, ParentType, ContextType>;
 };
 
 export type DateTagResolvers<ContextType = Context, ParentType extends ResolversParentTypes['DateTag'] = ResolversParentTypes['DateTag']> = {
@@ -1698,7 +1733,7 @@ export type QueryResolvers<ContextType = Context, ParentType extends ResolversPa
 };
 
 export type ReleaseResolvers<ContextType = Context, ParentType extends ResolversParentTypes['Release'] = ResolversParentTypes['Release']> = {
-  artists?: Resolver<Array<ResolversTypes['Artist']>, ParentType, ContextType>;
+  artists?: Resolver<Array<ResolversTypes['CreditedArtist']>, ParentType, ContextType>;
   blockers?: Resolver<Array<ResolversTypes['String']>, ParentType, ContextType>;
   catalogNumber?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   cover?: Resolver<Maybe<ResolversTypes['File']>, ParentType, ContextType>;
@@ -1799,16 +1834,16 @@ export type TextTagResolvers<ContextType = Context, ParentType extends Resolvers
 };
 
 export type TrackResolvers<ContextType = Context, ParentType extends ResolversParentTypes['Track'] = ResolversParentTypes['Track']> = {
-  artists?: Resolver<Array<ResolversTypes['Artist']>, ParentType, ContextType>;
+  artists?: Resolver<Array<ResolversTypes['CreditedArtist']>, ParentType, ContextType>;
   cdNumber?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
   credits?: Resolver<Array<ResolversTypes['Credit']>, ParentType, ContextType>;
   durationMs?: Resolver<Maybe<ResolversTypes['Float']>, ParentType, ContextType>;
-  features?: Resolver<Array<ResolversTypes['Artist']>, ParentType, ContextType>;
+  features?: Resolver<Array<ResolversTypes['CreditedArtist']>, ParentType, ContextType>;
   file?: Resolver<ResolversTypes['File'], ParentType, ContextType>;
   files?: Resolver<Array<ResolversTypes['FileLink']>, ParentType, ContextType>;
   id?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
   insertedAt?: Resolver<ResolversTypes['Float'], ParentType, ContextType>;
-  performers?: Resolver<Array<ResolversTypes['Artist']>, ParentType, ContextType>;
+  performers?: Resolver<Array<ResolversTypes['CreditedArtist']>, ParentType, ContextType>;
   release?: Resolver<ResolversTypes['Release'], ParentType, ContextType>;
   tags?: Resolver<Array<ResolversTypes['TagValues']>, ParentType, ContextType>;
   title?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
@@ -1849,6 +1884,7 @@ export type Resolvers<ContextType = Context> = {
   CatalogTotals?: CatalogTotalsResolvers<ContextType>;
   ChangedFile?: ChangedFileResolvers<ContextType>;
   Credit?: CreditResolvers<ContextType>;
+  CreditedArtist?: CreditedArtistResolvers<ContextType>;
   DateTag?: DateTagResolvers<ContextType>;
   DiscTitle?: DiscTitleResolvers<ContextType>;
   File?: FileResolvers<ContextType>;

@@ -38,12 +38,14 @@ export interface ArtistsFiles {
 export interface ArtistsReleaseCredits {
   artist_id: number;
   credit_id: number;
+  credited_name_id: number | null;
   id: Generated<number>;
   position: number;
 }
 
 export interface ArtistsReleases {
   artist_id: number;
+  credited_name_id: number | null;
   id: Generated<number>;
   position: number;
   release_id: number;
@@ -52,12 +54,14 @@ export interface ArtistsReleases {
 export interface ArtistsTrackCredits {
   artist_id: number;
   credit_id: number;
+  credited_name_id: number | null;
   id: Generated<number>;
   position: number;
 }
 
 export interface ArtistsTracks {
   artist_id: number;
+  credited_name_id: number | null;
   featured: Generated<number>;
   id: Generated<number>;
   position: number;

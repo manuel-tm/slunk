@@ -2,17 +2,21 @@
 // and labels, tracks, and credits (design §6).
 import { basename, dirname } from "node:path"
 import type {
+  AlternateName,
   AlternateNameValues,
+  Artist,
+  ArtistLink,
   CatalogStore,
   CreditOwner,
   DiscTitle,
+  Label,
   ListKind,
   Release,
   ReleaseLink,
   TrackArtist,
 } from "./catalog/repository.ts"
 import { formatDate, type ParsedDate, parseDate } from "./dates.ts"
-import { languageTag } from "./languages.ts"
+import { languageTag, scriptLanguage } from "./languages.ts"
 import type { Media } from "./media.ts"
 import type { FileRecord, LinkOwner } from "./media/repository.ts"
 import { type ListArgs, pagingOf, searchOf, sortOf } from "./paging.ts"
@@ -27,8 +31,17 @@ export type FileRef = { fileId?: number | null; path?: string | null }
 
 export type FileLinkInput = FileRef & { note?: string | null }
 
+/**
+ * An artist as credited (3_alternate_names.md §6): `creditedAs` is the name
+ * printed. Blank, or the artist's main name, means the main name.
+ */
+export type CreditedArtistInput = {
+  artistId: number
+  creditedAs?: string | null
+}
+
 /** A credit line: a role as printed, and its artists in order. */
-export type CreditInput = { role: string; artistIds: number[] }
+export type CreditInput = { role: string; artists: CreditedArtistInput[] }
 
 /** An alternate name (3_alternate_names.md §6). With an id, one the owner has. */
 export type AlternateNameInput = {
@@ -48,6 +61,11 @@ export type ArtistInput = {
   files: FileLinkInput[]
   /** Replaces the alternate names. Left out, they stay as they are. */
   alternateNames?: AlternateNameInput[] | null
+  /**
+   * On a rename, credits the links that showed the old main name with it, so
+   * they keep showing it
+   */
+  keepOldName?: boolean | null
 }
 
 export type LabelInput = {
@@ -67,7 +85,7 @@ export type ReleaseInput = {
   released?: string | null
   catalogNumber?: string | null
   variousArtists: boolean
-  artistIds: number[]
+  artists: CreditedArtistInput[]
   labelIds: number[]
   formatIds: number[]
   mediumIds: number[]
@@ -79,8 +97,8 @@ export type ReleaseTrackInput = FileRef & {
   cdNumber: number
   trackNumber: number
   title: string
-  artistIds: number[]
-  featureIds: number[]
+  artists: CreditedArtistInput[]
+  features: CreditedArtistInput[]
 }
 
 export type TrackInput = {
@@ -89,8 +107,8 @@ export type TrackInput = {
   cdNumber: number
   trackNumber: number
   title: string
-  artistIds: number[]
-  featureIds: number[]
+  artists: CreditedArtistInput[]
+  features: CreditedArtistInput[]
   credits: CreditInput[]
   files: FileLinkInput[]
   /** Replaces the track's tags. Left out, they stay as they are. */
@@ -171,20 +189,83 @@ export function createCatalog({
     })
   }
 
+  /** A track's artists and features, as credited, to resolve. */
   function trackArtists(
-    artistIds: number[],
-    featureIds: number[]
-  ): TrackArtist[] {
-    const both = artistIds.filter((id) => featureIds.includes(id))
-    if (both.length > 0) {
+    artists: CreditedArtistInput[],
+    features: CreditedArtistInput[]
+  ) {
+    const featured = new Set(features.map((link) => link.artistId))
+    if (artists.some((link) => featured.has(link.artistId))) {
       throw new Error(
         "An artist can't both perform a track and be featured on it"
       )
     }
     return [
-      ...artistIds.map((artistId) => ({ artistId, featured: false })),
-      ...featureIds.map((artistId) => ({ artistId, featured: true })),
+      ...firstOfEach(artists).map((link) => ({ ...link, featured: false })),
+      ...firstOfEach(features).map((link) => ({ ...link, featured: true })),
     ]
+  }
+
+  /**
+   * Resolves the names artists are credited with (3_alternate_names.md §6),
+   * in one transaction: blank or the main name is the main name, one of the
+   * artist's alternate names is that name, and anything else is added to
+   * them. Names compare exactly, case included. A name it adds is
+   * remembered, so two links can be credited with it.
+   */
+  function creditedNames(tx: CatalogStore) {
+    const known = new Map<number, { artist: Artist; names: AlternateName[] }>()
+
+    async function load(ids: number[]) {
+      const missing = [...new Set(ids)].filter((id) => !known.has(id))
+      if (missing.length === 0) return
+      const artists = await tx.artists.getMany(missing)
+      const names = await tx.artists.alternateNamesOf(missing)
+      for (const artist of artists) {
+        known.set(artist.id, { artist, names: names.get(artist.id) ?? [] })
+      }
+      const absent = missing.find((id) => !known.has(id))
+      if (absent !== undefined) throw notFound("artist", absent)
+    }
+
+    return async function resolve<T extends CreditedArtistInput>(
+      links: T[]
+    ): Promise<(Omit<T, "creditedAs"> & ArtistLink)[]> {
+      await load(links.map((link) => link.artistId))
+      const resolved = []
+      for (const { creditedAs, ...link } of links) {
+        const { artist, names } = known.get(link.artistId)!
+        const printed = cleanOrNull(creditedAs)
+        let creditedNameId: number | null = null
+        if (printed !== null && printed !== artist.name) {
+          let name = names.find((n) => n.name === printed)
+          if (!name) {
+            name = await tx.artists.addAlternateName(artist.id, {
+              name: printed,
+              language: scriptLanguage(printed),
+              realName: false,
+              note: null,
+            })
+            names.push(name)
+          }
+          creditedNameId = name.id
+        }
+        resolved.push({ ...link, creditedNameId })
+      }
+      return resolved
+    }
+  }
+
+  /** Credit lines with their artists' credited names resolved. */
+  async function resolvedLines(
+    credited: ReturnType<typeof creditedNames>,
+    credits: CreditInput[]
+  ) {
+    const lines = []
+    for (const { role, artists } of creditLines(credits)) {
+      lines.push({ role, artists: await credited(artists) })
+    }
+    return lines
   }
 
   function releaseValues(input: ReleaseInput) {
@@ -204,7 +285,8 @@ export function createCatalog({
     id: number,
     input: ReleaseInput
   ) {
-    await tx.releases.setLinks("artists", id, unique(input.artistIds))
+    const credited = creditedNames(tx)
+    await tx.releases.setArtists(id, await credited(firstOfEach(input.artists)))
     await tx.releases.setLinks("labels", id, unique(input.labelIds))
     await tx.releases.setLinks("formats", id, unique(input.formatIds))
     await tx.releases.setLinks("media", id, unique(input.mediumIds))
@@ -222,31 +304,97 @@ export function createCatalog({
     new Error(`There's no ${what} ${id}`)
 
   /**
-   * Saves an artist's or label's alternate names, after its main name
-   * (3_alternate_names.md §6). Left out, they stay as they are, and the main
-   * name still can't be one of them.
+   * Saves an artist's alternate names, after its main name
+   * (3_alternate_names.md §6). Links keep showing what they showed:
+   * - with `keepOldName`, a rename credits the links that showed the old main
+   *   name with it, as an alternate name;
+   * - a name that goes leaves its links showing the main name, and so does a
+   *   real name that's now the main name.
+   *
+   * Left out, the names stay as they are, except one that's now the main
+   * name: it's promoted, and goes unless it's a real name.
    */
-  async function setAlternateNames(
+  async function saveArtistNames(
     tx: CatalogStore,
-    what: NamedKind,
-    id: number,
-    main: string,
-    names: AlternateNameInput[] | null | undefined
+    before: Artist | null,
+    artist: Artist,
+    input: AlternateNameInput[] | null | undefined,
+    keepOldName: boolean
   ) {
-    const repository = what === "artist" ? tx.artists : tx.labels
-    if (names) {
-      await repository.setAlternateNames(
-        id,
-        alternateNameRows(what, main, names)
-      )
-      return
+    const id = artist.id
+    const namesNow = async () =>
+      (await tx.artists.alternateNamesOf([id])).get(id) ?? []
+    let existing = await namesNow()
+
+    // Before anything else, so links whose name goes below don't get it
+    let kept: AlternateName | null = null
+    if (
+      before &&
+      keepOldName &&
+      before.name !== artist.name &&
+      (await tx.artists.mainNameUses(id)) > 0
+    ) {
+      kept =
+        existing.find((name) => name.name === before.name) ??
+        (await tx.artists.addAlternateName(id, {
+          name: before.name,
+          language: before.nameLanguage,
+          realName: false,
+          note: null,
+        }))
+      await tx.artists.creditMainNameLinks(id, kept.id)
+      existing = await namesNow()
     }
-    const existing = (await repository.alternateNamesOf([id])).get(id) ?? []
-    if (existing.some((name) => name.name === main && !name.realName)) {
-      throw new Error(
-        `"${main}" is one of the ${what}'s alternate names. Remove it from them first.`
+
+    let list: AlternateNameValues[] = input
+      ? alternateNameRows("artist", artist.name, input)
+      : existing.filter((name) => name.name !== artist.name || name.realName)
+    const claimed = new Set(
+      list.flatMap((name) => (name.id != null ? [name.id] : []))
+    )
+    // A new name the artist already has keeps its row, and so its links
+    list = list.map((name) => {
+      if (name.id != null) return name
+      const same = existing.find(
+        (other) => other.name === name.name && !claimed.has(other.id)
       )
+      if (!same) return name
+      claimed.add(same.id)
+      return { ...name, id: same.id }
+    })
+    if (kept && !claimed.has(kept.id)) {
+      list.push(kept)
+      claimed.add(kept.id)
     }
+
+    const going = existing
+      .filter((name) => !claimed.has(name.id))
+      .map((name) => name.id)
+    const nowMain = list.flatMap((name) =>
+      name.id != null && name.name === artist.name ? [name.id] : []
+    )
+    await tx.artists.uncredit(id, [...going, ...nowMain])
+    await tx.artists.setAlternateNames(id, list)
+  }
+
+  /**
+   * Saves a label's alternate names, after its main name. Left out, they stay
+   * as they are, except one that's now the main name.
+   */
+  async function saveLabelNames(
+    tx: CatalogStore,
+    label: Label,
+    input: AlternateNameInput[] | null | undefined
+  ) {
+    const existing = (await tx.labels.alternateNamesOf([label.id])).get(
+      label.id
+    )
+    await tx.labels.setAlternateNames(
+      label.id,
+      input
+        ? alternateNameRows("label", label.name, input)
+        : (existing ?? []).filter((name) => name.name !== label.name)
+    )
   }
 
   /** What keeps an artist from being deleted. */
@@ -311,13 +459,7 @@ export function createCatalog({
       return store.transaction(async (tx) => {
         const registered = await media.insertPrepared(tx, prepared)
         const artist = await tx.artists.insert(values)
-        await setAlternateNames(
-          tx,
-          "artist",
-          artist.id,
-          artist.name,
-          input.alternateNames
-        )
+        await saveArtistNames(tx, null, artist, input.alternateNames, false)
         await setFileLinks(tx, "artist", artist.id, input.files, registered)
         return artist
       })
@@ -327,15 +469,16 @@ export function createCatalog({
       const values = namedValues(input)
       const prepared = await prepareRefs(input.files)
       return store.transaction(async (tx) => {
+        const before = await tx.artists.get(id)
+        if (!before) throw notFound("artist", id)
         const registered = await media.insertPrepared(tx, prepared)
-        const artist = await tx.artists.update(id, values)
-        if (!artist) throw notFound("artist", id)
-        await setAlternateNames(
+        const artist = (await tx.artists.update(id, values))!
+        await saveArtistNames(
           tx,
-          "artist",
-          id,
-          artist.name,
-          input.alternateNames
+          before,
+          artist,
+          input.alternateNames,
+          input.keepOldName ?? false
         )
         await setFileLinks(tx, "artist", id, input.files, registered)
         return artist
@@ -345,6 +488,13 @@ export function createCatalog({
     /** Alternate names by artist, in order. */
     artistNamesOf: (ids: readonly number[]) =>
       store.artists.alternateNamesOf(ids),
+    /** Artists' alternate names, by their ids. */
+    artistNamesByIds: (ids: readonly number[]) =>
+      store.artists.alternateNamesByIds(ids),
+    /** How many artist links are credited with each name. */
+    artistNameUses: (ids: readonly number[]) => store.artists.nameUses(ids),
+    /** How many of an artist's links show its main name. */
+    mainNameUses: (id: number) => store.artists.mainNameUses(id),
 
     /** Sets only an artist's picture, registering a path. */
     setArtistPicture: (id: number, picture: FileRef) =>
@@ -393,13 +543,7 @@ export function createCatalog({
       const values = namedValues(input)
       return store.transaction(async (tx) => {
         const label = await tx.labels.insert(values)
-        await setAlternateNames(
-          tx,
-          "label",
-          label.id,
-          label.name,
-          input.alternateNames
-        )
+        await saveLabelNames(tx, label, input.alternateNames)
         return label
       })
     },
@@ -408,13 +552,7 @@ export function createCatalog({
       return store.transaction(async (tx) => {
         const label = await tx.labels.update(id, values)
         if (!label) throw notFound("label", id)
-        await setAlternateNames(
-          tx,
-          "label",
-          id,
-          label.name,
-          input.alternateNames
-        )
+        await saveLabelNames(tx, label, input.alternateNames)
         return label
       })
     },
@@ -456,6 +594,8 @@ export function createCatalog({
     releasesTitled: (title: string) => store.releases.findByTitle(title),
     releaseLinksOf: (link: ReleaseLink, ids: readonly number[]) =>
       store.releases.linksOf(link, ids),
+    /** Release artists, as credited, by release. */
+    releaseArtistsOf: (ids: readonly number[]) => store.releases.artistsOf(ids),
     discTitlesOf: (ids: readonly number[]) => store.releases.discTitlesOf(ids),
 
     /** `2006`, `2006-01` or `2006-01-10`, with only the known parts */
@@ -527,6 +667,7 @@ export function createCatalog({
       }
 
       return store.transaction(async (tx) => {
+        const credited = creditedNames(tx)
         const existing = (await tx.tracks.ofReleases([id])).get(id) ?? []
         const kept = new Set(
           rows.flatMap((row) => (row.id != null ? [row.id] : []))
@@ -564,7 +705,7 @@ export function createCatalog({
           }
           await tx.tracks.setArtists(
             trackId,
-            trackArtists(row.artistIds, row.featureIds)
+            await credited(trackArtists(row.artists, row.features))
           )
         }
         // After the tracks, since a title needs a track on its disc
@@ -587,12 +728,21 @@ export function createCatalog({
         const tracks = new Set(
           ((await tx.tracks.ofReleases([id])).get(id) ?? []).map((t) => t.id)
         )
-        await tx.credits.set("release", id, creditLines(input.credits))
+        const credited = creditedNames(tx)
+        await tx.credits.set(
+          "release",
+          id,
+          await resolvedLines(credited, input.credits)
+        )
         for (const { trackId, credits } of input.tracks) {
           if (!tracks.has(trackId)) {
             throw new Error(`Track ${trackId} isn't on this release`)
           }
-          await tx.credits.set("track", trackId, creditLines(credits))
+          await tx.credits.set(
+            "track",
+            trackId,
+            await resolvedLines(credited, credits)
+          )
         }
         return release
       })
@@ -654,11 +804,16 @@ export function createCatalog({
           fileId: input.fileId,
           durationMs,
         })
+        const credited = creditedNames(tx)
         await tx.tracks.setArtists(
           track.id,
-          trackArtists(input.artistIds, input.featureIds)
+          await credited(trackArtists(input.artists, input.features))
         )
-        await tx.credits.set("track", track.id, creditLines(input.credits))
+        await tx.credits.set(
+          "track",
+          track.id,
+          await resolvedLines(credited, input.credits)
+        )
         await setFileLinks(tx, "track", track.id, input.files, registered)
         if (input.tags) {
           await tagging.setTagsWith(tx, "track", track.id, input.tags)
@@ -687,11 +842,16 @@ export function createCatalog({
           durationMs,
         })
         if (!track) throw notFound("track", id)
+        const credited = creditedNames(tx)
         await tx.tracks.setArtists(
           id,
-          trackArtists(input.artistIds, input.featureIds)
+          await credited(trackArtists(input.artists, input.features))
         )
-        await tx.credits.set("track", id, creditLines(input.credits))
+        await tx.credits.set(
+          "track",
+          id,
+          await resolvedLines(credited, input.credits)
+        )
         await setFileLinks(tx, "track", id, input.files, registered)
         if (input.tags) await tagging.setTagsWith(tx, "track", id, input.tags)
         return track
@@ -721,13 +881,18 @@ export function createCatalog({
       }
     },
 
-    /** Who performs a track (design §4.3), as artist ids. */
+    /**
+     * Who performs a track (design §4.3), as credited: on a regular release
+     * with no artists of its own, the release's, with their credited names.
+     */
     performers(
       release: Release,
       own: TrackArtist[],
-      releaseArtists: number[]
-    ): number[] {
-      const performing = own.filter((a) => !a.featured).map((a) => a.artistId)
+      releaseArtists: ArtistLink[]
+    ): ArtistLink[] {
+      const performing = own
+        .filter((a) => !a.featured)
+        .map(({ artistId, creditedNameId }) => ({ artistId, creditedNameId }))
       if (performing.length > 0 || release.variousArtists) return performing
       return releaseArtists
     },
@@ -919,17 +1084,28 @@ function unique(ids: number[]): number[] {
   return [...new Set(ids)]
 }
 
+/** Each artist once, as first given: an artist appears once per list. */
+function firstOfEach<T extends { artistId: number }>(links: T[]): T[] {
+  const seen = new Set<number>()
+  return links.filter((link) => {
+    if (seen.has(link.artistId)) return false
+    seen.add(link.artistId)
+    return true
+  })
+}
+
 /**
  * Credit lines as they're saved (2_credits.md §6): roles trimmed, and an
- * artist given twice on a line kept once. Refuses an empty role, a line with
- * no artists, and two lines with the same role, ignoring case.
+ * artist given twice on a line kept once, with the first name it's credited
+ * with. Refuses an empty role, a line with no artists, and two lines with the
+ * same role, ignoring case.
  */
 function creditLines(credits: CreditInput[]): CreditInput[] {
   const roles = new Set<string>()
-  return credits.map(({ role, artistIds }) => {
+  return credits.map(({ role, artists }) => {
     const trimmed = cleanText(role)
     if (!trimmed) throw new Error("A credit needs a role")
-    if (artistIds.length === 0) {
+    if (artists.length === 0) {
       throw new Error(`The ${trimmed} credit needs an artist`)
     }
     const key = nocaseKey(trimmed)
@@ -939,7 +1115,7 @@ function creditLines(credits: CreditInput[]): CreditInput[] {
       )
     }
     roles.add(key)
-    return { role: trimmed, artistIds: unique(artistIds) }
+    return { role: trimmed, artists: firstOfEach(artists) }
   })
 }
 

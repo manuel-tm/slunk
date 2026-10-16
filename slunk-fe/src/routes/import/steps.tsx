@@ -21,6 +21,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { graphql } from "@/gql"
+import { shownName } from "@/lib/credited"
 import type { ImportFilesQuery } from "@/gql/graphql"
 import { formatSize } from "@/lib/format"
 import { cn } from "@/lib/utils"
@@ -170,8 +171,15 @@ const ReleaseSuggestionQuery = graphql(`
         id
         title
         artists {
-          id
-          name
+          artist {
+            id
+            name
+            nameLanguage
+          }
+          creditedAs {
+            name
+            language
+          }
         }
       }
     }
@@ -218,8 +226,10 @@ export function ImportNewRelease() {
                   <span key={release.id}>
                     {index > 0 && ", "}
                     <Link to={`/releases/${release.id}`} className="underline">
-                      {release.artists.map((a) => a.name).join(", ")} –{" "}
-                      {release.title}
+                      {release.artists
+                        .map((link) => shownName(link).name)
+                        .join(", ")}{" "}
+                      – {release.title}
                     </Link>
                   </span>
                 ))}

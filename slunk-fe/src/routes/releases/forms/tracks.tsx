@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/table"
 import { graphql } from "@/gql"
 import type { ReleaseTracksFormQuery } from "@/gql/graphql"
+import { creditedInput, creditedOption } from "@/lib/credited"
 import { formatDuration } from "@/lib/format"
 
 const ReleaseTracksFormQueryDocument = graphql(`
@@ -30,7 +31,13 @@ const ReleaseTracksFormQueryDocument = graphql(`
       title
       variousArtists
       artists {
-        id
+        artist {
+          id
+        }
+        creditedAs {
+          name
+          language
+        }
       }
       discTitles {
         cdNumber
@@ -47,12 +54,26 @@ const ReleaseTracksFormQueryDocument = graphql(`
           path
         }
         artists {
-          id
-          name
+          artist {
+            id
+            name
+            nameLanguage
+          }
+          creditedAs {
+            name
+            language
+          }
         }
         features {
-          id
-          name
+          artist {
+            id
+            name
+            nameLanguage
+          }
+          creditedAs {
+            name
+            language
+          }
         }
       }
     }
@@ -141,8 +162,8 @@ function initialRows(
     cdNumber: track.cdNumber,
     trackNumber: track.trackNumber,
     title: track.title,
-    artists: track.artists,
-    features: track.features,
+    artists: track.artists.map(creditedOption),
+    features: track.features.map(creditedOption),
     durationMs: track.durationMs,
     include: true,
     fromFolder: false,
@@ -152,7 +173,7 @@ function initialRows(
   const releaseArtists = new Set(
     data.release?.variousArtists
       ? []
-      : (data.release?.artists ?? []).map((a) => a.id)
+      : (data.release?.artists ?? []).map((link) => link.artist.id)
   )
   for (const suggestion of data.trackSuggestions ?? []) {
     // Already one of this release's tracks: it has its row
@@ -287,8 +308,8 @@ function Rows({
                 cdNumber: row.cdNumber,
                 trackNumber: Number(row.trackNumber),
                 title: row.title,
-                artistIds: row.artists.map((a) => a.id),
-                featureIds: row.features.map((a) => a.id),
+                artists: creditedInput(row.artists),
+                features: creditedInput(row.features),
               })),
               discTitles: discs.map((disc) => ({
                 cdNumber: disc,
@@ -428,6 +449,7 @@ function Rows({
                     disabled={off}
                     onChange={(artists) => edit(row.key, { artists })}
                     picker={(p) => <ArtistPicker {...p} />}
+                    credited
                   />
                   {row.hint && (
                     <p className="mt-1 text-muted-foreground">{row.hint}</p>
@@ -439,6 +461,7 @@ function Rows({
                     disabled={off}
                     onChange={(features) => edit(row.key, { features })}
                     picker={(p) => <ArtistPicker {...p} />}
+                    credited
                   />
                 </TableCell>
                 <TableCell className="text-right align-top leading-8 tabular-nums">

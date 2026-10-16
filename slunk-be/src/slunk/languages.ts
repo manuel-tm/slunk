@@ -25,3 +25,15 @@ export function languageTag(text: string | null | undefined): string | null {
   }
   return canonical
 }
+
+/**
+ * The language a name's script gives away, for a name added as it was
+ * credited (3_alternate_names.md §6): kana are only Japanese, and Hangul only
+ * Korean. Han characters could be Chinese or Japanese, and Cyrillic several
+ * languages, so they give none.
+ */
+export function scriptLanguage(text: string): string | null {
+  if (/[\p{Script=Hiragana}\p{Script=Katakana}]/u.test(text)) return "ja"
+  if (/\p{Script=Hangul}/u.test(text)) return "ko"
+  return null
+}

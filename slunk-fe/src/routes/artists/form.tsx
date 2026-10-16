@@ -8,8 +8,19 @@ import {
   AlternateNamesEditor,
   alternateNamesValid,
   artistNamesInput,
+  cleanName,
 } from "@/components/alternate-names-editor"
 import { ButtonLink } from "@/components/button-link"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import {
   type FileLinkRow,
   FileLinksEditor,
@@ -39,12 +50,14 @@ const ArtistFormQuery = graphql(`
       id
       name
       nameLanguage
+      mainNameUses
       alternateNames {
         id
         name
         language
         realName
         note
+        uses
       }
       picture {
         id
@@ -75,12 +88,14 @@ const UpdateArtist = graphql(`
       id
       name
       nameLanguage
+      mainNameUses
       alternateNames {
         id
         name
         language
         realName
         note
+        uses
       }
     }
   }
@@ -125,6 +140,7 @@ export function ArtistForm() {
             initialName={artist?.name ?? ""}
             initialLanguage={artist?.nameLanguage ?? null}
             initialNames={(artist?.alternateNames ?? []).map(alternateNameRow)}
+            mainNameUses={artist?.mainNameUses ?? 0}
             initialPicture={
               artist?.picture
                 ? { id: artist.picture.id, name: artist.picture.path }
@@ -141,11 +157,20 @@ export function ArtistForm() {
   )
 }
 
+/** What saving changes on the artist's links, which the form asks about. */
+type Consequences = {
+  /** Names in use that the save removes: their links show the main name */
+  removed: AlternateNameRow[]
+  /** A rename while links show the old name: keep it on them? */
+  renamed: boolean
+}
+
 function Form({
   id,
   initialName,
   initialLanguage,
   initialNames,
+  mainNameUses = 0,
   initialPicture,
   initialLinks,
 }: {
@@ -153,6 +178,8 @@ function Form({
   initialName: string
   initialLanguage: string | null
   initialNames: AlternateNameRow[]
+  /** Links that show the main name, which a rename changes */
+  mainNameUses?: number
   initialPicture: Option | null
   initialLinks: FileLinkRow[]
 }) {
@@ -160,31 +187,80 @@ function Form({
   const [name, setName] = useState(initialName)
   const [nameLanguage, setNameLanguage] = useState(initialLanguage)
   const [names, setNames] = useState(initialNames)
+  // Set by "Make main", which keeps every link showing what it showed
+  const [keepOldName, setKeepOldName] = useState(false)
   const [picture, setPicture] = useState(initialPicture)
   const [links, setLinks] = useState(initialLinks)
+  const [asking, setAsking] = useState<Consequences | null>(null)
   const [create, created] = useMutation(CreateArtist)
   const [update, updated] = useMutation(UpdateArtist)
   const error = created.error ?? updated.error
+
+  /**
+   * Swaps a name with the main name (3_alternate_names.md §7.6): the name
+   * and its language become the main ones, and the main name takes its
+   * place. A real name stays a real name too. Saving keeps the old main name
+   * on the links that show it.
+   */
+  function makeMain(row: AlternateNameRow) {
+    const old = alternateNameRow({ name, language: nameLanguage })
+    setNames(
+      names.flatMap((r) =>
+        r.key !== row.key ? [r] : row.realName ? [r, old] : [old]
+      )
+    )
+    setName(row.name)
+    setNameLanguage(row.language)
+    setKeepOldName(true)
+  }
+
+  /** What the save would change on links, if anything needs asking. */
+  function consequences(): Consequences | null {
+    if (!id) return null
+    const kept = new Set(names.map((row) => row.id))
+    const removed = initialNames.filter(
+      (row) =>
+        row.id !== null &&
+        !kept.has(row.id) &&
+        (row.uses ?? 0) > 0 &&
+        // Promoted: its links show the same name, now the main one
+        cleanName(row.name) !== cleanName(name)
+    )
+    const renamed =
+      !keepOldName &&
+      mainNameUses > 0 &&
+      cleanName(name) !== cleanName(initialName)
+    return removed.length > 0 || renamed ? { removed, renamed } : null
+  }
+
+  async function save(keep: boolean) {
+    const input = {
+      name,
+      nameLanguage,
+      alternateNames: artistNamesInput(names),
+      keepOldName: keep,
+      pictureId: picture?.id ?? null,
+      files: fileLinksInput(links),
+    }
+    try {
+      const saved = id
+        ? (await update({ variables: { id, input } })).data!.updateArtist
+        : (await create({ variables: { input } })).data!.createArtist
+      navigate(`/artists/${saved.id}`)
+    } catch {
+      // The form shows the error
+    } finally {
+      setAsking(null)
+    }
+  }
 
   return (
     <form
       onSubmit={async (event) => {
         event.preventDefault()
-        const input = {
-          name,
-          nameLanguage,
-          alternateNames: artistNamesInput(names),
-          pictureId: picture?.id ?? null,
-          files: fileLinksInput(links),
-        }
-        try {
-          const saved = id
-            ? (await update({ variables: { id, input } })).data!.updateArtist
-            : (await create({ variables: { input } })).data!.createArtist
-          navigate(`/artists/${saved.id}`)
-        } catch {
-          // The form shows the error
-        }
+        const ask = consequences()
+        if (ask) setAsking(ask)
+        else await save(keepOldName)
       }}
     >
       <FieldGroup>
@@ -205,6 +281,12 @@ function Form({
               onChange={setNameLanguage}
             />
           </div>
+          {id && mainNameUses > 0 && (
+            <FieldDescription>
+              Shown on {plural(mainNameUses, "credit")}: every link to the
+              artist that isn't credited with another name.
+            </FieldDescription>
+          )}
         </Field>
         <Field>
           <FieldLabel>Alternate names</FieldLabel>
@@ -213,10 +295,12 @@ function Form({
             names={names}
             onChange={setNames}
             realNames
+            onMakeMain={makeMain}
           />
           <FieldDescription>
             Other spellings (ALIKA), initials (R. Fukui), names in other scripts
-            (福居良) and real names. Searching finds the artist by any of them.
+            (福居良) and real names. A release, track or credit can be credited
+            with any of them, and searching finds the artist by any of them.
           </FieldDescription>
         </Field>
         <Field>
@@ -248,6 +332,96 @@ function Form({
           </ButtonLink>
         </div>
       </FieldGroup>
+      <SaveDialog
+        asking={asking}
+        oldName={cleanName(initialName)}
+        newName={cleanName(name)}
+        mainNameUses={mainNameUses}
+        busy={updated.loading}
+        onCancel={() => setAsking(null)}
+        onSave={save}
+      />
     </form>
   )
+}
+
+/**
+ * Asks before a save changes what links show (3_alternate_names.md §7.6):
+ * removing a name that's in use credits its links with the main name, and a
+ * rename can keep the old name on the links that show it.
+ */
+function SaveDialog({
+  asking,
+  oldName,
+  newName,
+  mainNameUses,
+  busy,
+  onCancel,
+  onSave,
+}: {
+  asking: Consequences | null
+  oldName: string
+  newName: string
+  mainNameUses: number
+  busy: boolean
+  onCancel: () => void
+  onSave: (keepOldName: boolean) => void
+}) {
+  return (
+    <AlertDialog
+      open={asking !== null}
+      onOpenChange={(open) => !open && onCancel()}
+    >
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>
+            {asking?.renamed
+              ? `Keep "${oldName}" where it's printed?`
+              : "Remove names that are in use?"}
+          </AlertDialogTitle>
+          <AlertDialogDescription>
+            {asking?.renamed
+              ? `${plural(mainNameUses, "credit")} ${mainNameUses === 1 ? "shows" : "show"} "${oldName}". Keeping it credits them with it, as an alternate name. Otherwise they'll show "${newName}".`
+              : `Their credits will show "${newName}" instead.`}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        {asking && asking.removed.length > 0 && (
+          <ul className="flex list-disc flex-col gap-1 pl-4 text-xs">
+            {asking.removed.map((row) => (
+              <li key={row.key}>
+                <span {...textProps(row.language)}>{row.name}</span> is credited{" "}
+                {row.uses === 1 ? "once" : `${row.uses} times`}
+                {asking.renamed && `: those will show "${newName}"`}
+              </li>
+            ))}
+          </ul>
+        )}
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          {asking?.renamed ? (
+            <>
+              <AlertDialogAction
+                variant="outline"
+                disabled={busy}
+                onClick={() => onSave(false)}
+              >
+                Show "{newName}"
+              </AlertDialogAction>
+              <AlertDialogAction disabled={busy} onClick={() => onSave(true)}>
+                Keep "{oldName}"
+              </AlertDialogAction>
+            </>
+          ) : (
+            <AlertDialogAction disabled={busy} onClick={() => onSave(false)}>
+              Remove and save
+            </AlertDialogAction>
+          )}
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  )
+}
+
+function plural(n: number, noun: string): string {
+  return `${n} ${noun}${n === 1 ? "" : "s"}`
 }

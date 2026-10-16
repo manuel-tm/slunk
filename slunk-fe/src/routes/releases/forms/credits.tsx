@@ -11,6 +11,7 @@ import { QueryError } from "@/components/query-error"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { graphql } from "@/gql"
+import { type CreditedLink, creditedOption } from "@/lib/credited"
 
 const ReleaseCreditsFormQuery = graphql(`
   query ReleaseCreditsForm($id: ID!) {
@@ -20,8 +21,15 @@ const ReleaseCreditsFormQuery = graphql(`
       credits {
         role
         artists {
-          id
-          name
+          artist {
+            id
+            name
+            nameLanguage
+          }
+          creditedAs {
+            name
+            language
+          }
         }
       }
       tracks {
@@ -32,8 +40,15 @@ const ReleaseCreditsFormQuery = graphql(`
         credits {
           role
           artists {
-            id
-            name
+            artist {
+              id
+              name
+              nameLanguage
+            }
+            creditedAs {
+              name
+              language
+            }
           }
         }
       }
@@ -72,11 +87,11 @@ export function ReleaseCreditsForm({
   return (
     <Form
       releaseId={releaseId}
-      initialCredits={data.release.credits}
+      initialCredits={editable(data.release.credits)}
       initialTracks={data.release.tracks.map((track) => ({
         id: track.id,
         label: `${discs > 1 ? `${track.cdNumber}-` : ""}${track.trackNumber}. ${track.title}`,
-        credits: track.credits,
+        credits: editable(track.credits),
       }))}
       submitLabel={submitLabel}
       onSaved={onSaved}
@@ -154,4 +169,14 @@ function Form({
       </div>
     </form>
   )
+}
+
+/** Credit lines as the editor's: each artist an option, with its credited name. */
+function editable(
+  credits: { role: string; artists: CreditedLink[] }[]
+): CreditLine[] {
+  return credits.map(({ role, artists }) => ({
+    role,
+    artists: artists.map(creditedOption),
+  }))
 }

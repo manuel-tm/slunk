@@ -66,13 +66,19 @@ export type Track = {
   updatedAt: number
 }
 
-export type TrackArtist = { artistId: number; featured: boolean }
+/**
+ * An artist named on a release, a track or a credit line, and the alternate
+ * name printed there: null for the main name (3_alternate_names.md §4.2).
+ */
+export type ArtistLink = { artistId: number; creditedNameId: number | null }
+
+export type TrackArtist = ArtistLink & { featured: boolean }
 
 /** A disc's own title, as printed. Only discs with a title have one. */
 export type DiscTitle = { cdNumber: number; title: string }
 
 /** A credit line: a role as printed, and the artists who hold it, in order. */
-export type Credit = { role: string; artistIds: number[] }
+export type Credit = { role: string; artists: ArtistLink[] }
 
 /** The lists the user manages, which are just names. */
 export type ListKind = "release_formats" | "release_media"
@@ -87,6 +93,8 @@ export type ArtistCredit = {
   role: string
   releaseId: number
   trackId: number | null
+  /** The alternate name the artist is credited with on it */
+  creditedNameId: number | null
 }
 
 export type FormatCount = { formatId: number; count: number }
@@ -120,6 +128,21 @@ export interface NamedRepository<T> {
 }
 
 export interface ArtistsRepository extends NamedRepository<Artist> {
+  /** Alternate names, by their ids */
+  alternateNamesByIds(ids: readonly number[]): Promise<AlternateName[]>
+  /** Adds an alternate name after the artist's others */
+  addAlternateName(
+    artistId: number,
+    values: Omit<AlternateNameValues, "id">
+  ): Promise<AlternateName>
+  /** How many artist links are credited with each name */
+  nameUses(nameIds: readonly number[]): Promise<Map<number, number>>
+  /** How many of the artist's links show its main name */
+  mainNameUses(artistId: number): Promise<number>
+  /** Credits the artist's links that show its main name with a name instead */
+  creditMainNameLinks(artistId: number, nameId: number): Promise<void>
+  /** Credits the artist's links that use these names with the main name */
+  uncredit(artistId: number, nameIds: number[]): Promise<void>
   /** Where the artist is used, which keeps it from being deleted */
   usage(
     id: number
@@ -149,7 +172,10 @@ export type ReleaseQuery = ListQuery<"title" | "released"> & ReleaseFilters
 
 export type ReleaseValues = Omit<Release, "id" | "insertedAt" | "updatedAt">
 
-/** The rows that link a release to artists, labels, formats or media. */
+/**
+ * The rows that link a release to artists, labels, formats or media. A
+ * release's artists also have credited names: see `artistsOf`.
+ */
 export type ReleaseLink = "artists" | "labels" | "formats" | "media"
 
 export interface ReleasesRepository {
@@ -169,7 +195,15 @@ export interface ReleasesRepository {
     releaseIds: readonly number[]
   ): Promise<Map<number, number[]>>
   /** Replaces the links; their order is the display order */
-  setLinks(link: ReleaseLink, releaseId: number, ids: number[]): Promise<void>
+  setLinks(
+    link: Exclude<ReleaseLink, "artists">,
+    releaseId: number,
+    ids: number[]
+  ): Promise<void>
+  /** Release artists by release, in display order */
+  artistsOf(releaseIds: readonly number[]): Promise<Map<number, ArtistLink[]>>
+  /** Replaces the release's artists; their order is the display order */
+  setArtists(releaseId: number, artists: ArtistLink[]): Promise<void>
   /** Disc titles by release, by disc number */
   discTitlesOf(releaseIds: readonly number[]): Promise<Map<number, DiscTitle[]>>
   /** Replaces the disc titles. Each disc needs a track already. */

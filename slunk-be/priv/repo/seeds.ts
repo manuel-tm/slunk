@@ -118,7 +118,7 @@ export async function seed(db: Kysely<DB>): Promise<void> {
     formats: [],
     media: [],
   })
-  await insertRelease(db, {
+  const virmalised = await insertRelease(db, {
     release: {
       title: "virmalised",
       release_date: Date.UTC(2024, 0, 1) / 1000,
@@ -129,6 +129,18 @@ export async function seed(db: Kysely<DB>): Promise<void> {
     formats: [format["EP"]],
     media: [medium["Digital"]],
   })
+  // Credited as printed (3_alternate_names.md §4.1)
+  await db
+    .updateTable("artists_releases")
+    .set({
+      credited_name_id: db
+        .selectFrom("artist_alternate_names")
+        .select("id")
+        .where("artist_id", "=", artist["Alika"])
+        .where("name", "=", "ALIKA"),
+    })
+    .where("release_id", "=", virmalised)
+    .execute()
   await insertRelease(db, {
     release: {
       title: "Scenery",

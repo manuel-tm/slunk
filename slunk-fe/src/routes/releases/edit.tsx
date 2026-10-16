@@ -7,6 +7,7 @@ import { QueryError } from "@/components/query-error"
 import { TabLinks } from "@/components/tab-links"
 import { Skeleton } from "@/components/ui/skeleton"
 import { graphql } from "@/gql"
+import { creditedOption } from "@/lib/credited"
 import { NotFound } from "@/routes/not-found"
 import {
   EMPTY_DETAILS,
@@ -35,8 +36,15 @@ const ReleaseDetailsQuery = graphql(`
       variousArtists
       catalogNumber
       artists {
-        id
-        name
+        artist {
+          id
+          name
+          nameLanguage
+        }
+        creditedAs {
+          name
+          language
+        }
       }
       labels {
         id
@@ -137,7 +145,7 @@ export function DetailsTab({
         released: release.released ?? "",
         variousArtists: release.variousArtists,
         catalogNumber: release.catalogNumber ?? "",
-        artists: release.artists,
+        artists: release.artists.map(creditedOption),
         labels: release.labels,
         formats: release.formats,
         media: release.media,

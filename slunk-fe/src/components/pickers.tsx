@@ -14,7 +14,42 @@ import { tagValueKey } from "@/lib/tags"
 // Pickers return the first 20 matches (design §7.3)
 const LIMIT = 20
 
-/** An artist or label as an option, showing the alternate name `q` matched. */
+/**
+ * An artist as options (3_alternate_names.md §7.4): the artist, then the
+ * artist credited with each alternate name `q` matches, as "Alika · as
+ * ALIKA". Only those credit the name, so a search hint like "Bjork" is never
+ * printed on a release by mistake.
+ */
+const withCredits =
+  (q: string) =>
+  <
+    T extends {
+      id: string
+      name: string
+      alternateNames: { id: string; name: string; realName: boolean }[]
+    },
+  >({
+    alternateNames,
+    ...artist
+  }: T) => {
+    const search = q.normalize("NFC").trim().toLowerCase()
+    const matching = search
+      ? alternateNames.filter((name) =>
+          name.name.toLowerCase().includes(search)
+        )
+      : []
+    return [
+      artist,
+      ...matching.map((name) => ({
+        ...artist,
+        key: `${artist.id}:${name.id}`,
+        creditedAs: name.name,
+        detail: name.realName ? "real name" : null,
+      })),
+    ]
+  }
+
+/** A label as an option, showing the alternate name `q` matched. */
 const withMatch =
   (q: string) =>
   <T extends { name: string; alternateNames: { name: string }[] }>({
@@ -33,7 +68,9 @@ const ArtistOptions = graphql(`
         name
         lang: nameLanguage
         alternateNames {
+          id
           name
+          realName
         }
         image: picture {
           id
@@ -63,7 +100,7 @@ export function ArtistPicker(props: PickerProps) {
       noun="artist"
       query={query}
       onQuery={setQuery}
-      options={(data?.artists.items ?? []).map(withMatch(q))}
+      options={(data?.artists.items ?? []).flatMap(withCredits(q))}
       onCreate={async (name) =>
         (await create({ variables: { name } })).data!.createArtist
       }

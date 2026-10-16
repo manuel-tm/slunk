@@ -4,11 +4,109 @@ import type {
   LabelsRepository,
 } from "../slunk/catalog/repository.ts"
 import type { DB } from "./db_types.ts"
-import { createNamedRepository } from "./named_repository.ts"
+import { chunks } from "./helpers.ts"
+import { createNamedRepository, toAlternateName } from "./named_repository.ts"
+
+/** Every table that links an artist to a release, a track or a credit line. */
+const ARTIST_LINKS = [
+  "artists_releases",
+  "artists_tracks",
+  "artists_release_credits",
+  "artists_track_credits",
+] as const
 
 export function createArtistsRepository(db: Kysely<DB>): ArtistsRepository {
   return {
     ...createNamedRepository(db, "artists"),
+
+    async alternateNamesByIds(ids) {
+      const found = []
+      for (const chunk of chunks(ids)) {
+        const rows = await db
+          .selectFrom("artist_alternate_names")
+          .selectAll()
+          .where("id", "in", chunk)
+          .execute()
+        found.push(...rows.map(toAlternateName))
+      }
+      return found
+    },
+
+    async addAlternateName(artistId, values) {
+      const row = await db
+        .insertInto("artist_alternate_names")
+        .values({
+          artist_id: artistId,
+          name: values.name,
+          language: values.language,
+          real_name: values.realName ? 1 : 0,
+          note: values.note,
+          position: sql<number>`(
+            select coalesce(max(position) + 1, 0) from artist_alternate_names
+            where artist_id = ${artistId}
+          )`,
+        })
+        .returningAll()
+        .executeTakeFirstOrThrow()
+      return toAlternateName(row)
+    },
+
+    async nameUses(nameIds) {
+      const uses = new Map<number, number>()
+      for (const chunk of chunks(nameIds)) {
+        const { rows } = await sql<{ nameId: number; uses: number }>`
+          select credited_name_id as nameId, count(*) as uses from (
+            ${sql.join(
+              ARTIST_LINKS.map(
+                (table) => sql`
+                  select credited_name_id from ${sql.table(table)}
+                  where credited_name_id in (${sql.join(chunk)})`
+              ),
+              sql` union all `
+            )}
+          )
+          group by credited_name_id
+        `.execute(db)
+        for (const row of rows) uses.set(row.nameId, row.uses)
+      }
+      return uses
+    },
+
+    async mainNameUses(artistId) {
+      const { rows } = await sql<{ uses: number }>`
+        select ${sql.join(
+          ARTIST_LINKS.map(
+            (table) => sql`(
+              select count(*) from ${sql.table(table)}
+              where artist_id = ${artistId} and credited_name_id is null
+            )`
+          ),
+          sql` + `
+        )} as uses
+      `.execute(db)
+      return rows[0].uses
+    },
+
+    async creditMainNameLinks(artistId, nameId) {
+      for (const table of ARTIST_LINKS) {
+        await sql`
+          update ${sql.table(table)} set credited_name_id = ${nameId}
+          where artist_id = ${artistId} and credited_name_id is null
+        `.execute(db)
+      }
+    },
+
+    async uncredit(artistId, nameIds) {
+      for (const chunk of chunks(nameIds)) {
+        for (const table of ARTIST_LINKS) {
+          await sql`
+            update ${sql.table(table)} set credited_name_id = null
+            where artist_id = ${artistId}
+              and credited_name_id in (${sql.join(chunk)})
+          `.execute(db)
+        }
+      }
+    },
 
     async usage(id) {
       const { rows } = await sql<{
@@ -46,13 +144,15 @@ export function createArtistsRepository(db: Kysely<DB>): ArtistsRepository {
         role: string
         releaseId: number
         trackId: number | null
+        creditedNameId: number | null
       }>`
-        select l.role, l.release_id as releaseId, null as trackId
+        select l.role, l.release_id as releaseId, null as trackId,
+          a.credited_name_id as creditedNameId
         from artists_release_credits a
         join release_credits l on l.id = a.credit_id
         where a.artist_id = ${id}
         union all
-        select l.role, t.release_id, t.id
+        select l.role, t.release_id, t.id, a.credited_name_id
         from artists_track_credits a
         join track_credits l on l.id = a.credit_id
         join tracks t on t.id = l.track_id

@@ -214,7 +214,9 @@ function toNamed(row: Selectable<Artists>): Artist {
 }
 
 /** A label's row has no `real_name`, so it's never a real name. */
-function toAlternateName(row: Selectable<ArtistAlternateNames>): AlternateName {
+export function toAlternateName(
+  row: Selectable<ArtistAlternateNames>
+): AlternateName {
   return {
     id: row.id,
     name: row.name,

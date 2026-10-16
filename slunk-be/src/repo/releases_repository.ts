@@ -160,6 +160,52 @@ export function createReleasesRepository(db: Kysely<DB>): ReleasesRepository {
       )
     },
 
+    async artistsOf(releaseIds) {
+      const rows: {
+        releaseId: number
+        artistId: number
+        creditedNameId: number | null
+      }[] = []
+      for (const chunk of chunks(releaseIds)) {
+        const found = await db
+          .selectFrom("artists_releases")
+          .select([
+            "release_id as releaseId",
+            "artist_id as artistId",
+            "credited_name_id as creditedNameId",
+          ])
+          .where("release_id", "in", chunk)
+          .orderBy("release_id")
+          .orderBy("position")
+          .execute()
+        rows.push(...found)
+      }
+      return groupBy(
+        rows,
+        (row) => row.releaseId,
+        ({ artistId, creditedNameId }) => ({ artistId, creditedNameId })
+      )
+    },
+
+    async setArtists(releaseId, artists) {
+      await db
+        .deleteFrom("artists_releases")
+        .where("release_id", "=", releaseId)
+        .execute()
+      if (artists.length === 0) return
+      await db
+        .insertInto("artists_releases")
+        .values(
+          artists.map(({ artistId, creditedNameId }, position) => ({
+            release_id: releaseId,
+            artist_id: artistId,
+            credited_name_id: creditedNameId,
+            position,
+          }))
+        )
+        .execute()
+    },
+
     async setLinks(link, releaseId, ids) {
       const { table, column, positioned } = LINKS[link]
       await sql`

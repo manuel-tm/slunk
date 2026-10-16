@@ -16,6 +16,10 @@ import {
  * `image` key shows it before the name, or a placeholder when it's null.
  * `lang` is the name's language, and `detail` shows after it, muted: the
  * alternate name a search matched (3_alternate_names.md §7.4).
+ *
+ * An artist can also be offered as credited with one of its names, as
+ * "Alika · as ALIKA": `creditedAs` is that name, and `key` tells the option
+ * apart from the plain artist, which has the same id.
  */
 export type Option = {
   id: string
@@ -23,7 +27,11 @@ export type Option = {
   image?: { id: string } | null
   lang?: string | null
   detail?: string | null
+  creditedAs?: string | null
+  key?: string
 }
+
+const keyOf = (option: Option) => option.key ?? option.id
 
 const CREATE = "__create__"
 
@@ -72,7 +80,7 @@ export function Picker<T extends Option>({
   const items = options.filter((option) => !exclude.includes(option.id))
   // An alternate name counts, so the picker doesn't offer a second artist
   const exact = options.some((option) =>
-    [option.name, option.detail].some(
+    [option.name, option.creditedAs ?? option.detail].some(
       (name) => name?.toLowerCase() === typed.toLowerCase()
     )
   )
@@ -87,7 +95,7 @@ export function Picker<T extends Option>({
       value={value}
       disabled={disabled || creating}
       itemToStringLabel={(option) => option.name}
-      isItemEqualToValue={(a, b) => a.id === b.id}
+      isItemEqualToValue={(a, b) => keyOf(a) === keyOf(b)}
       onInputValueChange={onQuery}
       onValueChange={async (option) => {
         if (option?.id !== CREATE) {
@@ -114,15 +122,22 @@ export function Picker<T extends Option>({
         <ComboboxEmpty>No {noun} found</ComboboxEmpty>
         <ComboboxList>
           {(option: T) => (
-            <ComboboxItem key={option.id} value={option}>
+            <ComboboxItem key={keyOf(option)} value={option}>
               {option.image !== undefined && (
                 <Cover file={option.image} alt="" className="size-8 shrink-0" />
               )}
               <span {...textProps(option.lang)}>{option.name}</span>
-              {option.detail && (
-                <span className="text-muted-foreground" dir="auto">
-                  · {option.detail}
+              {option.creditedAs ? (
+                <span className="text-muted-foreground">
+                  · as <span dir="auto">{option.creditedAs}</span>
+                  {option.detail && ` (${option.detail})`}
                 </span>
+              ) : (
+                option.detail && (
+                  <span className="text-muted-foreground" dir="auto">
+                    · {option.detail}
+                  </span>
+                )
               )}
             </ComboboxItem>
           )}

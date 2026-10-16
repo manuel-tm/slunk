@@ -2,13 +2,14 @@ import { ArrowLeftIcon, XIcon } from "lucide-react"
 import { type ComponentProps, useId, useState } from "react"
 
 import { move, RowActions } from "@/components/ordered-list"
+import { CreditedChipLabel } from "@/components/credited-as"
 import type { Option } from "@/components/picker"
 import { ArtistPicker, useCreditRoles } from "@/components/pickers"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { creditedInput } from "@/lib/credited"
 import { roleKey } from "@/lib/format"
-import { textProps } from "@/lib/languages"
 
 /** A credit line: a role as printed, and the artists who hold it, in order. */
 export type CreditLine = { role: string; artists: Option[] }
@@ -39,7 +40,7 @@ export function creditsValid(lines: CreditLine[]): boolean {
 export function creditsInput(lines: CreditLine[]) {
   return lines.map(({ role, artists }) => ({
     role,
-    artistIds: artists.map((artist) => artist.id),
+    artists: creditedInput(artists),
   }))
 }
 
@@ -124,7 +125,17 @@ function LineRow({
                   <ArrowLeftIcon className="size-3" />
                 </button>
               )}
-              <span {...textProps(artist.lang)}>{artist.name}</span>
+              <CreditedChipLabel
+                artist={artist}
+                onChange={(creditedAs) =>
+                  onChange({
+                    ...line,
+                    artists: artists.map((a) =>
+                      a.id === artist.id ? { ...a, creditedAs } : a
+                    ),
+                  })
+                }
+              />
               <button
                 type="button"
                 aria-label={`Remove ${artist.name} from ${label}`}

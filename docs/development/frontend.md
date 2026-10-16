@@ -2,12 +2,13 @@
 
 > Keep this page up to date: any change to the frontend's stack, structure or conventions updates it in the same change.
 
-The frontend implements the whole base design ([1_introduction.md](../design/1_introduction.md), phases 0 to 4), with credits as lines from phase 0 of [2_credits.md](../design/2_credits.md), and alternate names from phase 0 of [3_alternate_names.md](../design/3_alternate_names.md):
+The frontend implements the whole base design ([1_introduction.md](../design/1_introduction.md), phases 0 to 4), with credits as lines from phase 0 of [2_credits.md](../design/2_credits.md), and alternate names and credited names from phases 0 and 1 of [3_alternate_names.md](../design/3_alternate_names.md):
 - the app shell (sidebar with the Import button, page header) and a "not found" page;
 - the dashboard: the backend's status, the catalog's totals, and the newest releases;
 - the files pages: list, register, read and update;
 - the catalog's pages: releases (with the release page and its edit tabs), artists (with their tabs), tracks, labels, release formats and release media;
 - alternate names of artists and labels, and the language of each name;
+- artists as credited on releases, tracks and credit lines, with the name printed there;
 - tags: their definitions' pages, a release's Tags tab, its tags on the release page, a track's tags, and tag filters on the release and track lists;
 - bulk edits on the release list: setting or removing a tag on many releases;
 - the import: a release built from a folder, step by step;
@@ -84,6 +85,8 @@ slunk-fe/
       alternate-names.tsx  alternate names under a name, and the one a
                            search matched
       language-picker.tsx  a language tag, by name or tag
+      credited-as.tsx      the name an artist is credited with: a field,
+                           and a chip label with a popover
       file-uses.tsx        what uses a file, each linking to it
       tag-fields.tsx       a tag definition's fields, and the new-tag dialog
       tag-value-input.tsx  a tag value, suggesting a text tag's values
@@ -113,6 +116,7 @@ slunk-fe/
       format.ts            sizes, durations, dates, release dates, roles
       languages.ts         language names, tags, and lang/dir for names
       names.ts             the alternate name a search matched
+      credited.ts          artists as credited: as options, and as inputs
       tags.ts              tag types, values, and the list's tag filters
       utils.ts             cn() helper
 ```
@@ -128,6 +132,7 @@ slunk-fe/
 - **Wide tables** scroll inside the page: `SidebarInset` has `min-w-0`, so a table can't widen the page past the window.
 - **Unknown ids:** a read or update page whose query returns null renders `NotFound` (design §7.2).
 - **Names** of artists and labels, wherever they're listed, go through `Names`, which joins them with commas: "U2, Green Day". An "&" is only ever part of a name, as in "Simon & Garfunkel".
+- **Artists as credited** ([3_alternate_names.md §7.1](../design/3_alternate_names.md#71-showing-names-and-titles)): a release's and a track's artists, features and performers, and a credit line's artists, are `CreditedArtist`s, asked for as `artists { artist { id name nameLanguage } creditedAs { name language } }`. `Names` takes them as they come, and shows the name printed, linking to the artist, with the main name in its tooltip: "ALIKA" links to Alika. There's no "*". So an artist page's Releases tab reads "ALIKA – virmalised", and its Appearances and Credits tabs add "as A. Ronnell" after a row's title (`CreditedAsNote`), since they don't show the name otherwise.
 - **Languages of names** ([3_alternate_names.md §7.1](../design/3_alternate_names.md#71-showing-names-and-titles)): a shown name gets `textProps(language)` from `lib/languages.ts`, which sets `lang` to its language and `dir="auto"`. `lang` picks the glyphs (Japanese and Chinese share code points but not shapes), and `dir="auto"` keeps a right-to-left name from moving the dashes and commas around it. So a query that shows an artist's or label's name also asks for `nameLanguage`. `Names` does it for each name, a crumb takes a `lang`, and a picker option one too. `languageName()` names a tag with the browser's `Intl.DisplayNames`: `ja-Latn` is "Japanese (Latin)".
 - **Alternate names** show under an artist's or label's name on its page (`AlternateNames`): "Real name", then "Other names", each with its language. In the artist and label lists, a row that a search found by an alternate name shows that name under the main one (`MatchedName`), and the pickers show it after the option's name, muted.
 - **Links:** use React Router's `Link`.
@@ -171,11 +176,18 @@ Lists follow design §7.2:
 - **Pickers** (design §7.2): artists, labels, formats, media, releases, files and tags are chosen with the pickers in `pickers.tsx`, each a `Picker` that searches the backend as the user types and offers the first 20 matches. Except for files and releases, a picker also offers to create what was typed ("Create artist 'Robbie Nevil'"). Each picker owns its query, so its results stay typed.
   - `Picker` is generic over its option type, so an option can carry more than an id and a name. A `TagOption` also has the tag's type, its id within the type, and whether it's multiple. Its `id` is `type:id`, since ids repeat across types.
   - An option with an `image` shows it before its name, or a placeholder when it's null. The artist and release pickers ask for one, aliasing the field as they alias the name: `image: picture { id }`, `image: cover { id }`.
-  - An option's `lang` is its name's language, and its `detail` shows after the name, muted: the artist and label pickers set it to the alternate name the search matched. Typing an alternate name exactly counts as an exact match, so the picker doesn't offer to create a second artist with it.
+  - An option's `lang` is its name's language, and its `detail` shows after the name, muted: the label picker sets it to the alternate name the search matched. Typing an alternate name exactly counts as an exact match, so the picker doesn't offer to create a second artist with it.
+  - The artist picker offers the artist, then the artist credited with each alternate name the search matches: "Alika · as ALIKA", and "(real name)" after a real one. That option has the artist's id, its own `key`, and `creditedAs`. Only it credits the name, so a search hint like "Bjork" is never printed by mistake.
   - `TagPicker` with `creatable` asks for the rest of a new tag in a dialog (`NewTagDialog`): its type, and single or multiple. Cancelling it creates nothing, since `onCreate` can return null.
   - `TagValuePicker` adds a value to a multi-value text tag: one that other releases already have, the most used first, or what was typed ("Add 'Funk'"). A single text value (`TagValueInput`) suggests the same values through a `<datalist>`.
 - **Ordered lists** (release artists, labels, formats, media, a track's artists and features) use `OrderedList`, whose order sets `position`. A track row uses the compact `ChipList`. File links use `FileLinksEditor`.
+- **Credited names** are edited where artists are linked ([3_alternate_names.md §7.6](../design/3_alternate_names.md#76-forms)). An artist option carries `creditedAs`, the name printed: `creditedOption()` makes one from a `CreditedArtist`, and `creditedInput()` turns options into `CreditedArtistInput`s.
+  - `OrderedList` and `ChipList` take `credited` for artists. An ordered list's row then has a `CreditedAsInput`, and a chip shows the name printed, which opens a popover with one (`CreditedChipLabel`). The credits editor's chips do the same.
+  - `CreditedAsInput` is a text field that suggests the artist's alternate names through a `<datalist>`, asked for only while it has focus. Whatever is typed is the name: blank is the main name, which the placeholder shows ("as Drake"), and a name the artist doesn't have yet is added to its alternate names on save.
 - **Alternate names** use `AlternateNamesEditor`, in the artist and label forms: a row per name, with its language, a note, and for an artist whether it's a real name. A name listed twice, or the same as the main name (unless it's a real name), is marked, and `alternateNamesValid()` keeps the form from saving until it's fixed. Names compare exactly, case included. `artistNamesInput()` and `labelNamesInput()` turn the rows into the API's inputs, with each saved name's id.
+- **The artist form** also shows how many links each name is credited on, and how many show the main name.
+  - "Make main" swaps a name with the main name, language included: the old main name takes its row as a new name, and a real name stays too. The save then sends `keepOldName`, so every link keeps showing what it showed.
+  - Before saving, `SaveDialog` asks when the save changes what links show: removing a name that's in use credits its links with the main name, and a rename while links show the old name asks whether to keep it on them ("Keep 'Alika'" or "Show 'Alika Milova'").
 - **Languages** are picked with `LanguagePicker`, a `Picker` with no backend search of its own: it offers the tags in use first (`languages`), then every ISO 639-1 language and a few script variants (`LANGUAGES`), matched by name or tag. Any other valid tag can be typed in ("Use the tag ja-Latn-hepburn"), and the backend stores it in canonical form.
 - **Credits** use `CreditsEditor`, a row per line ([2_credits.md §7](../design/2_credits.md#7-frontend)):
   - The role is a text field, typed as printed. It suggests every spelling in use, the most used first, through a `<datalist>` (`useCreditRoles`). It only asks while it has focus, so a release with many lines doesn't send a query per line.

@@ -27,12 +27,17 @@ export function createLoaders({
     artist: byId(catalog.artistsByIds),
     label: byId(catalog.labelsByIds),
     artistNames: grouped(catalog.artistNamesOf),
+    artistName: byId(catalog.artistNamesByIds),
+    artistNameUses: new DataLoader<number, number>(async (ids) => {
+      const uses = await catalog.artistNameUses(ids)
+      return ids.map((id) => uses.get(id) ?? 0)
+    }),
     labelNames: grouped(catalog.labelNamesOf),
     release: byId(catalog.releasesByIds),
     track: byId(catalog.tracksByIds),
     format: list("release_formats"),
     medium: list("release_media"),
-    releaseArtists: grouped((ids) => catalog.releaseLinksOf("artists", ids)),
+    releaseArtists: grouped(catalog.releaseArtistsOf),
     releaseLabels: grouped((ids) => catalog.releaseLinksOf("labels", ids)),
     releaseFormats: grouped((ids) => catalog.releaseLinksOf("formats", ids)),
     releaseMedia: grouped((ids) => catalog.releaseLinksOf("media", ids)),

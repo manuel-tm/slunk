@@ -16,6 +16,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import { graphql } from "@/gql"
+import { creditedInput } from "@/lib/credited"
 
 export type DetailsValues = {
   title: string
@@ -91,7 +92,7 @@ export function ReleaseDetailsForm({
           released: values.released.trim() || null,
           variousArtists: values.variousArtists,
           catalogNumber: values.catalogNumber.trim() || null,
-          artistIds: values.artists.map((a) => a.id),
+          artists: creditedInput(values.artists),
           labelIds: values.labels.map((l) => l.id),
           formatIds: values.formats.map((f) => f.id),
           mediumIds: values.media.map((m) => m.id),
@@ -124,10 +125,11 @@ export function ReleaseDetailsForm({
             items={values.artists}
             onChange={(artists) => set({ artists })}
             picker={(p) => <ArtistPicker {...p} />}
+            credited
           />
           <FieldDescription>
-            Who the release is by. A compilation uses a "Various Artists"
-            artist.
+            Who the release is by, each as printed: blank for the main name. A
+            compilation uses a "Various Artists" artist.
           </FieldDescription>
         </Field>
         <Field orientation="horizontal">

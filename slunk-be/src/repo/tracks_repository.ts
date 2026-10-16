@@ -127,11 +127,21 @@ export function createTracksRepository(db: Kysely<DB>): TracksRepository {
     },
 
     async artistsOf(trackIds) {
-      const rows: { trackId: number; artistId: number; featured: number }[] = []
+      const rows: {
+        trackId: number
+        artistId: number
+        creditedNameId: number | null
+        featured: number
+      }[] = []
       for (const chunk of chunks(trackIds)) {
         const found = await db
           .selectFrom("artists_tracks")
-          .select(["track_id as trackId", "artist_id as artistId", "featured"])
+          .select([
+            "track_id as trackId",
+            "artist_id as artistId",
+            "credited_name_id as creditedNameId",
+            "featured",
+          ])
           .where("track_id", "in", chunk)
           .orderBy("track_id")
           .orderBy("position")
@@ -141,7 +151,11 @@ export function createTracksRepository(db: Kysely<DB>): TracksRepository {
       return groupBy(
         rows,
         (row) => row.trackId,
-        (row) => ({ artistId: row.artistId, featured: row.featured === 1 })
+        (row) => ({
+          artistId: row.artistId,
+          creditedNameId: row.creditedNameId,
+          featured: row.featured === 1,
+        })
       )
     },
 
@@ -154,9 +168,10 @@ export function createTracksRepository(db: Kysely<DB>): TracksRepository {
       await db
         .insertInto("artists_tracks")
         .values(
-          artists.map(({ artistId, featured }, position) => ({
+          artists.map(({ artistId, creditedNameId, featured }, position) => ({
             track_id: trackId,
             artist_id: artistId,
+            credited_name_id: creditedNameId,
             featured: featured ? 1 : 0,
             position,
           }))

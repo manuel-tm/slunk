@@ -30,11 +30,12 @@ export function createCreditsRepository(db: Kysely<DB>): CreditsRepository {
         lineId: number
         role: string
         artistId: number
+        creditedNameId: number | null
       }[] = []
       for (const chunk of chunks(ids)) {
         const { rows: found } = await sql<(typeof rows)[number]>`
           select l.${sql.ref(column)} as ownerId, l.id as lineId, l.role,
-            a.artist_id as artistId
+            a.artist_id as artistId, a.credited_name_id as creditedNameId
           from ${sql.table(lines)} l
           join ${sql.table(artists)} a on a.credit_id = l.id
           where l.${sql.ref(column)} in (${sql.join(chunk)})
@@ -59,7 +60,10 @@ export function createCreditsRepository(db: Kysely<DB>): CreditsRepository {
             ),
           ].map(([, line]) => ({
             role: line[0].role,
-            artistIds: line.map((row) => row.artistId),
+            artists: line.map(({ artistId, creditedNameId }) => ({
+              artistId,
+              creditedNameId,
+            })),
           })),
         ])
       )
@@ -71,17 +75,18 @@ export function createCreditsRepository(db: Kysely<DB>): CreditsRepository {
       await sql`
         delete from ${sql.table(lines)} where ${sql.ref(column)} = ${id}
       `.execute(db)
-      for (const [position, { role, artistIds }] of credits.entries()) {
+      for (const [position, { role, artists: links }] of credits.entries()) {
         const { rows } = await sql<{ id: number }>`
           insert into ${sql.table(lines)} (${sql.ref(column)}, role, position)
           values (${id}, ${role}, ${position})
           returning id
         `.execute(db)
         // Numbered from 0: the line's key needs an artist at position 0
-        for (const [place, artistId] of artistIds.entries()) {
+        for (const [place, { artistId, creditedNameId }] of links.entries()) {
           await sql`
-            insert into ${sql.table(artists)} (credit_id, artist_id, position)
-            values (${rows[0].id}, ${artistId}, ${place})
+            insert into ${sql.table(artists)}
+              (credit_id, artist_id, credited_name_id, position)
+            values (${rows[0].id}, ${artistId}, ${creditedNameId}, ${place})
           `.execute(db)
         }
       }

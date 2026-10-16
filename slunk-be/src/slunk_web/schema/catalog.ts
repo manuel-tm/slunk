@@ -30,8 +30,18 @@ const fileLinks = (
   }[]
 ): FileLinkInput[] =>
   links.map((link) => ({ ...fileRef(link), note: link.note }))
-const credits = (list: { role: string; artistIds: string[] }[]) =>
-  list.map((c) => ({ role: c.role, artistIds: ids(c.artistIds) }))
+/** Artists as credited, with their ids as numbers. */
+const credited = (list: { artistId: string; creditedAs?: string | null }[]) =>
+  list.map((link) => ({
+    artistId: n(link.artistId),
+    creditedAs: link.creditedAs,
+  }))
+const credits = (
+  list: {
+    role: string
+    artists: { artistId: string; creditedAs?: string | null }[]
+  }[]
+) => list.map((c) => ({ role: c.role, artists: credited(c.artists) }))
 
 /** Pairs tag names with the artists that have exactly those names. */
 async function suggestArtists(catalog: Catalog, names: string[]) {
@@ -157,8 +167,8 @@ export const catalogResolvers: Resolvers = {
           cdNumber: row.cdNumber,
           trackNumber: row.trackNumber,
           title: row.title,
-          artistIds: ids(row.artistIds),
-          featureIds: ids(row.featureIds),
+          artists: credited(row.artists),
+          features: credited(row.features),
         })),
         discTitles
       ),
@@ -198,6 +208,8 @@ export const catalogResolvers: Resolvers = {
   Artist: {
     alternateNames: (artist, _args, { loaders }) =>
       loaders.artistNames.load(artist.id),
+    mainNameUses: (artist, _args, { catalog }) =>
+      catalog.mainNameUses(artist.id),
     picture: (artist, _args, { loaders }) =>
       artist.picture === null ? null : loaders.file.load(artist.picture),
     files: (artist, _args, { loaders }) => loaders.artistFiles.load(artist.id),
@@ -226,6 +238,10 @@ export const catalogResolvers: Resolvers = {
   },
 
   ArtistCredit: {
+    creditedAs: (credit, _args, { loaders }) =>
+      credit.creditedNameId === null
+        ? null
+        : loaders.artistName.load(credit.creditedNameId),
     release: (credit, _args, { loaders }) =>
       loadRequired(loaders.release, credit.releaseId),
     track: (credit, _args, { loaders }) =>
@@ -253,8 +269,8 @@ export const catalogResolvers: Resolvers = {
       release.coverPicture === null
         ? null
         : loaders.file.load(release.coverPicture),
-    artists: async (release, _args, { loaders }) =>
-      loadAll(loaders.artist, await loaders.releaseArtists.load(release.id)),
+    artists: (release, _args, { loaders }) =>
+      loaders.releaseArtists.load(release.id),
     labels: async (release, _args, { loaders }) =>
       loadAll(loaders.label, await loaders.releaseLabels.load(release.id)),
     formats: async (release, _args, { loaders }) =>
@@ -290,38 +306,33 @@ export const catalogResolvers: Resolvers = {
       loadRequired(loaders.release, track.releaseId),
     file: (track, _args, { loaders }) =>
       loadRequired(loaders.file, track.fileId),
-    artists: async (track, _args, { loaders }) => {
-      const own = await loaders.trackArtists.load(track.id)
-      return loadAll(
-        loaders.artist,
-        own.filter((a) => !a.featured).map((a) => a.artistId)
-      )
-    },
-    features: async (track, _args, { loaders }) => {
-      const own = await loaders.trackArtists.load(track.id)
-      return loadAll(
-        loaders.artist,
-        own.filter((a) => a.featured).map((a) => a.artistId)
-      )
-    },
+    artists: async (track, _args, { loaders }) =>
+      (await loaders.trackArtists.load(track.id)).filter((a) => !a.featured),
+    features: async (track, _args, { loaders }) =>
+      (await loaders.trackArtists.load(track.id)).filter((a) => a.featured),
     performers: async (track, _args, { catalog, loaders }) => {
       const [release, own, releaseArtists] = await Promise.all([
         loadRequired(loaders.release, track.releaseId),
         loaders.trackArtists.load(track.id),
         loaders.releaseArtists.load(track.releaseId),
       ])
-      return loadAll(
-        loaders.artist,
-        catalog.performers(release, own, releaseArtists)
-      )
+      return catalog.performers(release, own, releaseArtists)
     },
     credits: (track, _args, { loaders }) => loaders.trackCredits.load(track.id),
     files: (track, _args, { loaders }) => loaders.trackFiles.load(track.id),
   },
 
-  Credit: {
-    artists: (credit, _args, { loaders }) =>
-      loadAll(loaders.artist, credit.artistIds),
+  CreditedArtist: {
+    artist: (link, _args, { loaders }) =>
+      loadRequired(loaders.artist, link.artistId),
+    creditedAs: (link, _args, { loaders }) =>
+      link.creditedNameId === null
+        ? null
+        : loaders.artistName.load(link.creditedNameId),
+  },
+
+  ArtistName: {
+    uses: (name, _args, { loaders }) => loaders.artistNameUses.load(name.id),
   },
 
   ListItem: {
@@ -349,10 +360,12 @@ function artistInput(input: {
   pictureId?: string | null
   files: Parameters<typeof fileLinks>[0]
   alternateNames?: NameInput[] | null
+  keepOldName: boolean
 }) {
   return {
     ...labelInput(input),
     files: fileLinks(input.files),
+    keepOldName: input.keepOldName,
   }
 }
 
@@ -378,7 +391,7 @@ function releaseInput(input: {
   released?: string | null
   catalogNumber?: string | null
   variousArtists: boolean
-  artistIds: string[]
+  artists: { artistId: string; creditedAs?: string | null }[]
   labelIds: string[]
   formatIds: string[]
   mediumIds: string[]
@@ -388,7 +401,7 @@ function releaseInput(input: {
     released: input.released,
     catalogNumber: input.catalogNumber,
     variousArtists: input.variousArtists,
-    artistIds: ids(input.artistIds),
+    artists: credited(input.artists),
     labelIds: ids(input.labelIds),
     formatIds: ids(input.formatIds),
     mediumIds: ids(input.mediumIds),
@@ -401,9 +414,9 @@ function trackInput(input: {
   cdNumber: number
   trackNumber: number
   title: string
-  artistIds: string[]
-  featureIds: string[]
-  credits: { role: string; artistIds: string[] }[]
+  artists: { artistId: string; creditedAs?: string | null }[]
+  features: { artistId: string; creditedAs?: string | null }[]
+  credits: Parameters<typeof credits>[0]
   files: {
     fileId?: string | null
     path?: string | null
@@ -417,8 +430,8 @@ function trackInput(input: {
     cdNumber: input.cdNumber,
     trackNumber: input.trackNumber,
     title: input.title,
-    artistIds: ids(input.artistIds),
-    featureIds: ids(input.featureIds),
+    artists: credited(input.artists),
+    features: credited(input.features),
     credits: credits(input.credits),
     files: fileLinks(input.files),
     tags: input.tags ? tagValues(input.tags) : null,

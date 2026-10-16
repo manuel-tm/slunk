@@ -26,21 +26,39 @@ const TrackQuery = graphql(`
         title
       }
       performers {
-        id
-        name
-        nameLanguage
+        artist {
+          id
+          name
+          nameLanguage
+        }
+        creditedAs {
+          name
+          language
+        }
       }
       features {
-        id
-        name
-        nameLanguage
+        artist {
+          id
+          name
+          nameLanguage
+        }
+        creditedAs {
+          name
+          language
+        }
       }
       credits {
         role
         artists {
-          id
-          name
-          nameLanguage
+          artist {
+            id
+            name
+            nameLanguage
+          }
+          creditedAs {
+            name
+            language
+          }
         }
       }
       file {

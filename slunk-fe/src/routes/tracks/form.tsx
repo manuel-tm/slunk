@@ -37,6 +37,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { graphql } from "@/gql"
+import { creditedInput, creditedOption } from "@/lib/credited"
 import { NotFound } from "@/routes/not-found"
 
 const TrackFormQuery = graphql(`
@@ -62,18 +63,39 @@ const TrackFormQuery = graphql(`
         name: path
       }
       artists {
-        id
-        name
+        artist {
+          id
+          name
+          nameLanguage
+        }
+        creditedAs {
+          name
+          language
+        }
       }
       features {
-        id
-        name
+        artist {
+          id
+          name
+          nameLanguage
+        }
+        creditedAs {
+          name
+          language
+        }
       }
       credits {
         role
         artists {
-          id
-          name
+          artist {
+            id
+            name
+            nameLanguage
+          }
+          creditedAs {
+            name
+            language
+          }
         }
       }
       files {
@@ -167,9 +189,12 @@ export function TrackForm() {
           cdNumber: track.cdNumber,
           trackNumber: track.trackNumber,
           title: track.title,
-          artists: track.artists,
-          features: track.features,
-          credits: track.credits,
+          artists: track.artists.map(creditedOption),
+          features: track.features.map(creditedOption),
+          credits: track.credits.map(({ role, artists }) => ({
+            role,
+            artists: artists.map(creditedOption),
+          })),
           links: track.files.map((link) => ({
             file: link.file,
             note: link.note ?? "",
@@ -241,8 +266,8 @@ function Form({ id, initial }: { id?: string; initial: Values }) {
           cdNumber: values.cdNumber,
           trackNumber: values.trackNumber,
           title: values.title,
-          artistIds: values.artists.map((a) => a.id),
-          featureIds: values.features.map((a) => a.id),
+          artists: creditedInput(values.artists),
+          features: creditedInput(values.features),
           credits: creditsInput(values.credits),
           files: fileLinksInput(values.links),
           tags: tagValuesInput(values.tags),
@@ -325,6 +350,7 @@ function Form({ id, initial }: { id?: string; initial: Values }) {
             items={values.artists}
             onChange={(artists) => set({ artists })}
             picker={(p) => <ArtistPicker {...p} />}
+            credited
           />
           <FieldDescription>
             Who performs it. On a regular release, leave it empty and the
@@ -337,6 +363,7 @@ function Form({ id, initial }: { id?: string; initial: Values }) {
             items={values.features}
             onChange={(features) => set({ features })}
             picker={(p) => <ArtistPicker {...p} />}
+            credited
           />
         </Field>
         <Field>

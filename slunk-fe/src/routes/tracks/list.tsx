@@ -59,9 +59,15 @@ const TracksQuery = graphql(`
           title
         }
         performers {
-          id
-          name
-          nameLanguage
+          artist {
+            id
+            name
+            nameLanguage
+          }
+          creditedAs {
+            name
+            language
+          }
         }
         file {
           id

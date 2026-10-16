@@ -12,7 +12,7 @@ import { FileGallery } from "@/components/file-gallery"
 import { PER_PAGE } from "@/components/list/list-layout"
 import { Pager } from "@/components/list/pager"
 import { SearchBox } from "@/components/list/search-box"
-import { artistUrl, Names } from "@/components/names"
+import { artistUrl, CreditedAsNote, Names } from "@/components/names"
 import { PageHeader } from "@/components/page-header"
 import { QueryError } from "@/components/query-error"
 import { ReleaseTable } from "@/components/release-table"
@@ -216,9 +216,15 @@ const ArtistReleasesQuery = graphql(`
           id
         }
         artists {
-          id
-          name
-          nameLanguage
+          artist {
+            id
+            name
+            nameLanguage
+          }
+          creditedAs {
+            name
+            language
+          }
         }
         formats {
           id
@@ -326,16 +332,37 @@ const ArtistAppearancesQuery = graphql(`
             id
           }
           artists {
-            id
-            name
-            nameLanguage
+            artist {
+              id
+              name
+              nameLanguage
+            }
+            creditedAs {
+              name
+              language
+            }
           }
         }
         tracks {
           id
           title
+          artists {
+            artist {
+              id
+            }
+            creditedAs {
+              name
+              language
+            }
+          }
           features {
-            id
+            artist {
+              id
+            }
+            creditedAs {
+              name
+              language
+            }
           }
         }
       }
@@ -381,19 +408,28 @@ export function ArtistAppearances() {
                   </Link>
                 </TableCell>
                 <TableCell className="whitespace-normal">
-                  {tracks.map((track, index) => (
-                    <span key={track.id}>
-                      {index > 0 && ", "}
-                      <Link
-                        to={`/tracks/${track.id}`}
-                        className="hover:underline"
-                      >
-                        {track.title}
-                      </Link>
-                      {track.features.some((f) => f.id === artist.id) &&
-                        " (feat.)"}
-                    </span>
-                  ))}
+                  {tracks.map((track, index) => {
+                    const own = (links: typeof track.features) =>
+                      links.find((link) => link.artist.id === artist.id)
+                    const featured = own(track.features)
+                    return (
+                      <span key={track.id}>
+                        {index > 0 && ", "}
+                        <Link
+                          to={`/tracks/${track.id}`}
+                          className="hover:underline"
+                        >
+                          {track.title}
+                        </Link>
+                        {featured && " (feat.)"}
+                        <CreditedAsNote
+                          creditedAs={
+                            (featured ?? own(track.artists))?.creditedAs
+                          }
+                        />
+                      </span>
+                    )
+                  })}
                 </TableCell>
                 <TableCell>{formatReleased(release.released)}</TableCell>
               </TableRow>
@@ -411,6 +447,10 @@ const ArtistCreditsQuery = graphql(`
       ...ArtistHeader
       credits {
         role
+        creditedAs {
+          name
+          language
+        }
         release {
           id
           title
@@ -467,15 +507,21 @@ export function ArtistCredits() {
                   >
                     {credit.release.title}
                   </Link>
+                  {!credit.track && (
+                    <CreditedAsNote creditedAs={credit.creditedAs} />
+                  )}
                 </TableCell>
                 <TableCell>
                   {credit.track && (
-                    <Link
-                      to={`/tracks/${credit.track.id}`}
-                      className="hover:underline"
-                    >
-                      {credit.track.title}
-                    </Link>
+                    <>
+                      <Link
+                        to={`/tracks/${credit.track.id}`}
+                        className="hover:underline"
+                      >
+                        {credit.track.title}
+                      </Link>
+                      <CreditedAsNote creditedAs={credit.creditedAs} />
+                    </>
                   )}
                 </TableCell>
                 <TableCell>{formatReleased(credit.release.released)}</TableCell>

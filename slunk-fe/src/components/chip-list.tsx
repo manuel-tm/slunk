@@ -1,23 +1,27 @@
 import { XIcon } from "lucide-react"
 import { type ReactNode, useState } from "react"
 
+import { CreditedChipLabel } from "@/components/credited-as"
 import type { Option, PickerProps } from "@/components/picker"
 import { Badge } from "@/components/ui/badge"
 
 /**
  * A compact list for table rows: chips in order, each removable, and a
- * picker that adds one at the end.
+ * picker that adds one at the end. With `credited`, the chips are artists:
+ * each shows the name it's credited with, and opens a popover to change it.
  */
 export function ChipList({
   items,
   onChange,
   picker,
   disabled,
+  credited = false,
 }: {
   items: Option[]
   onChange: (items: Option[]) => void
   picker: (props: PickerProps) => ReactNode
   disabled?: boolean
+  credited?: boolean
 }) {
   const [pickerKey, setPickerKey] = useState(0)
   return (
@@ -26,7 +30,20 @@ export function ChipList({
         <div className="flex flex-wrap gap-1">
           {items.map((item) => (
             <Badge key={item.id} variant="secondary" className="gap-1">
-              {item.name}
+              {credited && !disabled ? (
+                <CreditedChipLabel
+                  artist={item}
+                  onChange={(creditedAs) =>
+                    onChange(
+                      items.map((i) =>
+                        i.id === item.id ? { ...i, creditedAs } : i
+                      )
+                    )
+                  }
+                />
+              ) : (
+                (item.creditedAs ?? item.name)
+              )}
               {!disabled && (
                 <button
                   type="button"

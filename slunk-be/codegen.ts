@@ -31,6 +31,7 @@ const config: CodegenConfig = {
           Release: `${CATALOG}#Release`,
           Track: `${CATALOG}#Track`,
           Credit: `${CATALOG}#Credit`,
+          CreditedArtist: `${CATALOG}#ArtistLink`,
           ListItem: `${CATALOG}#ListItem`,
           ReleaseFormat: `${CATALOG}#ListItem`,
           ReleaseMedium: `${CATALOG}#ListItem`,

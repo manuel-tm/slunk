@@ -491,6 +491,8 @@ extend type Query {
 }
 ```
 
+> Changed during implementation, see [Appendix B](#appendix-b-artists-count-the-links-that-show-the-main-name).
+
 Changed types:
 - `Artist`: `nameLanguage`, `alternateNames: [ArtistName!]!`.
 - `Label`: `nameLanguage`, `alternateNames: [LabelName!]!`.
@@ -605,6 +607,8 @@ The track page follows the same rules: its heading, then a line for each alterna
   Picking "as ALIKA" credits Alika as "ALIKA". Picking the plain artist doesn't, so a search hint like "Bjork" never ends up printed on a release by mistake.
 
 ### 7.5 Artist pages
+
+> Changed during implementation, see [Appendix A](#appendix-a-the-releases-tab-shows-the-credited-name-in-the-title).
 
 ```
 Artists > Alika (7)                                         Edit  Delete
@@ -806,3 +810,19 @@ These were open while the design was written. They were settled as proposed when
 2. **Unprinted titles** show on the release page, in italics.
 3. **Lists** show each row's first alternate title under the main one, or the one a search matched.
 4. **The main title** is the user's choice for each release. The examples, and the import's split, put the Latin title first, and "Swap" makes the other part the main one.
+
+## Appendix A: The Releases tab shows the credited name in the title
+
+- **Date:** 2026-10-16
+- **Affects:** §7.5 Artist pages
+- **Was:** on the Releases, Appearances and Credits tabs, a row where the artist is credited under an alternate name says so after its title: "virmalised   as ALIKA".
+- **Now:** the Releases tab's title cell already names the release's artists, as it did before this design ("U2, Green Day – The Saints Are Coming"). They're shown as credited, so the row reads "ALIKA – virmalised", with "Alika" in the tooltip, and no "as ALIKA" follows. The Appearances and Credits tabs add it, since their rows don't show the artist's name: "Willow Weep For Me as A. Ronnell".
+- **Why:** "ALIKA – virmalised as ALIKA" says the name twice.
+
+## Appendix B: Artists count the links that show the main name
+
+- **Date:** 2026-10-16
+- **Affects:** §6 GraphQL; §7.6 Forms (the artist form)
+- **Was:** the artist form asks whether to keep the old name on a rename "when the artist has such links", and nothing in the API said how many there are.
+- **Now:** `Artist.mainNameUses: Int!` counts the artist links with no credited name. The form shows it under the name, asks only when it's more than 0, and the backend only adds the old name when there are links to keep it on.
+- **Why:** without the count, the form would ask on every rename, typo fixes included, and a rename with nothing to keep would leave an unused alternate name behind.

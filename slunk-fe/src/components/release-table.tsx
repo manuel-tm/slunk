@@ -12,6 +12,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import type { CreditedLink } from "@/lib/credited"
 import { formatDateTime, formatReleased } from "@/lib/format"
 
 type Named = { id: string; name: string }
@@ -26,7 +27,8 @@ export type ReleaseRow = {
   insertedAt?: number
   updatedAt?: number
   cover?: { id: string } | null
-  artists?: Named[]
+  /** As credited */
+  artists?: CreditedLink[]
   formats?: Named[]
   media?: Named[]
   labels?: Named[]
@@ -73,7 +75,9 @@ export type Selection = {
  * The release table (design §7.6): the release list's, also shown on label
  * and artist pages with fewer columns. `withArtists` names every artist in
  * the title cell, as on an artist page. With `selection`, each row gets a
- * checkbox, and the header one selects the page.
+ * checkbox, and the header one selects the page. Artists show as credited
+ * (3_alternate_names.md §7.1), so on an artist page the title cell says when
+ * a release credits the artist under another name: "ALIKA – virmalised".
  */
 export function ReleaseTable({
   releases,

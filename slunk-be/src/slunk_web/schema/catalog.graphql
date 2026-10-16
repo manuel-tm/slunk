@@ -108,6 +108,8 @@ type Artist {
   nameLanguage: String
   "Other names the artist goes by, real names among them, in order."
   alternateNames: [ArtistName!]!
+  "Artist links that show the main name: the ones a rename changes, unless it keeps the old name on them."
+  mainNameUses: Int!
   "The primary image. Other images are file links."
   picture: File
   insertedAt: Float!
@@ -145,6 +147,8 @@ type ArtistCredit {
   release: Release!
   "Null for a credit on the release itself"
   track: Track
+  "The name the artist is credited with on the line, when it isn't the main name"
+  creditedAs: ArtistName
 }
 
 "A name an artist goes by, besides its main one: another spelling (ALIKA), a name in another script (福居良), a real name."
@@ -157,6 +161,15 @@ type ArtistName {
   "A legal or birth name"
   realName: Boolean!
   note: String
+  "Artist links credited with it: as a release artist, a track artist or feature, or on a credit line."
+  uses: Int!
+}
+
+"An artist as credited on a release, a track or a credit line (3_alternate_names.md §4.2). It has no id, so the cache keeps it inside its parent."
+type CreditedArtist {
+  artist: Artist!
+  "The name printed, when it isn't the artist's main name"
+  creditedAs: ArtistName
 }
 
 "A name a label goes by, besides its main one. It has no id: nothing refers to it."
@@ -198,8 +211,8 @@ type Release {
   variousArtists: Boolean!
   insertedAt: Float!
   updatedAt: Float!
-  "Who the release is by, in display order."
-  artists: [Artist!]!
+  "Who the release is by, in display order, as credited."
+  artists: [CreditedArtist!]!
   labels: [Label!]!
   formats: [ReleaseFormat!]!
   media: [ReleaseMedium!]!
@@ -229,11 +242,11 @@ type Track {
   insertedAt: Float!
   updatedAt: Float!
   "The track's own performers, without features."
-  artists: [Artist!]!
+  artists: [CreditedArtist!]!
   "Guests, shown as \"(feat. …)\"."
-  features: [Artist!]!
-  "Who performs it (design §4.3): its own artists. On a regular release with none, the release's artists; on a various-artists release, nobody."
-  performers: [Artist!]!
+  features: [CreditedArtist!]!
+  "Who performs it (design §4.3): its own artists. On a regular release with none, the release's artists, as credited there; on a various-artists release, nobody."
+  performers: [CreditedArtist!]!
   credits: [Credit!]!
   files: [FileLink!]!
 }
@@ -247,7 +260,7 @@ type DiscTitle {
 "A credit line: a role, as printed, and the artists who hold it, in order. It has no id: release and track credits live in different tables, so their ids would collide."
 type Credit {
   role: String!
-  artists: [Artist!]!
+  artists: [CreditedArtist!]!
 }
 
 enum ListKind {
@@ -372,8 +385,17 @@ input ArtistInput {
   nameLanguage: String
   pictureId: ID
   files: [FileLinkInput!]! = []
-  "Replaces the alternate names, in order. Left out, they stay as they are."
+  "Replaces the alternate names, in order. Left out, they stay as they are, except one the main name is renamed to: it's promoted, and goes unless it's a real name. Removing a name that's credited credits its links with the main name."
   alternateNames: [ArtistNameInput!]
+  "On a rename, credits the links that showed the old main name with it, as an alternate name, so they keep showing it."
+  keepOldName: Boolean! = false
+}
+
+"An artist as credited."
+input CreditedArtistInput {
+  artistId: ID!
+  "As printed. Blank, or the artist's main name, means the main name. A name the artist doesn't have yet is added to its alternate names. Compared exactly, case included."
+  creditedAs: String
 }
 
 "An alternate name. Names are trimmed, a blank one is left out, and none can be given twice or be the main name, except a real name."
@@ -406,8 +428,8 @@ input ReleaseInput {
   released: String
   catalogNumber: String
   variousArtists: Boolean! = false
-  "In display order, like the other lists"
-  artistIds: [ID!]!
+  "In display order, like the other lists. An artist given twice is kept once."
+  artists: [CreditedArtistInput!]!
   labelIds: [ID!]! = []
   formatIds: [ID!]! = []
   mediumIds: [ID!]! = []
@@ -421,8 +443,8 @@ input ReleaseTrackInput {
   cdNumber: Int! = 1
   trackNumber: Int!
   title: String!
-  artistIds: [ID!]! = []
-  featureIds: [ID!]! = []
+  artists: [CreditedArtistInput!]! = []
+  features: [CreditedArtistInput!]! = []
 }
 
 input DiscTitleInput {
@@ -439,8 +461,8 @@ input ReleaseFilesInput {
 input CreditInput {
   "As printed. Trimmed, and unique on its release or track, ignoring case."
   role: String!
-  "At least one, in display order. One given twice is kept once."
-  artistIds: [ID!]!
+  "At least one, in display order. One given twice is kept once, as first credited."
+  artists: [CreditedArtistInput!]!
 }
 
 input TrackCreditsInput {
@@ -459,8 +481,8 @@ input TrackInput {
   cdNumber: Int! = 1
   trackNumber: Int!
   title: String!
-  artistIds: [ID!]! = []
-  featureIds: [ID!]! = []
+  artists: [CreditedArtistInput!]! = []
+  features: [CreditedArtistInput!]! = []
   credits: [CreditInput!]! = []
   files: [FileLinkInput!]! = []
   "Replaces the track's tags. Left out, they stay as they are."
