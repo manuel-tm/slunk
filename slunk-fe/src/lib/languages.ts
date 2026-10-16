@@ -27,6 +27,18 @@ export function canonicalTag(text: string): string | null {
 }
 
 /**
+ * The language a name's or title's script gives away, as the backend guesses
+ * it for a credited name (3_alternate_names.md §6): kana are only Japanese,
+ * and Hangul only Korean. Han characters could be Chinese or Japanese, so
+ * they give none.
+ */
+export function scriptLanguage(text: string): string | null {
+  if (/[\p{Script=Hiragana}\p{Script=Katakana}]/u.test(text)) return "ja"
+  if (/\p{Script=Hangul}/u.test(text)) return "ko"
+  return null
+}
+
+/**
  * `lang` and `dir` for a name or title (3_alternate_names.md §7.1). `lang`
  * picks the glyphs, since Japanese and Chinese share code points but not
  * shapes. `dir="auto"` keeps a right-to-left name from moving the dashes and

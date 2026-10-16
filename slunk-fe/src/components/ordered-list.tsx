@@ -66,18 +66,23 @@ export function RowActions({
 /**
  * Picked rows, in order: the order sets `position` (design §7.2). A picker
  * underneath adds one. With `credited`, the rows are artists, each with the
- * name it's credited with (3_alternate_names.md §7.6).
+ * name it's credited with (3_alternate_names.md §7.6). With `typed`, like
+ * the import's tag names that picked no artist, the picker has each one typed
+ * in, in turn (§7.7).
  */
 export function OrderedList({
   items,
   onChange,
   picker,
   credited = false,
+  typed = [],
 }: {
   items: Option[]
   onChange: (items: Option[]) => void
   picker: (props: PickerProps) => ReactNode
   credited?: boolean
+  /** Names typed into the picker in turn, a new one after each pick */
+  typed?: string[]
 }) {
   // A new key clears the picker after each pick
   const [pickerKey, setPickerKey] = useState(0)
@@ -118,6 +123,7 @@ export function OrderedList({
         {picker({
           value: null,
           exclude: items.map((item) => item.id),
+          defaultQuery: typed[pickerKey],
           onChange: (option) => {
             if (!option) return
             onChange([...items, option])

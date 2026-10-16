@@ -5,6 +5,7 @@ import { Link, useNavigate, useParams, useSearchParams } from "react-router"
 
 import { ButtonLink } from "@/components/button-link"
 import { FolderBrowser } from "@/components/folder-browser"
+import { OtherNamesOffer } from "@/components/other-names-offer"
 import { PageHeader } from "@/components/page-header"
 import { QueryError } from "@/components/query-error"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
@@ -24,6 +25,7 @@ import { graphql } from "@/gql"
 import { shownName } from "@/lib/credited"
 import type { ImportFilesQuery } from "@/gql/graphql"
 import { formatSize } from "@/lib/format"
+import { offeredNames, pickedArtists, unpicked } from "@/lib/import"
 import { cn } from "@/lib/utils"
 import { DetailsTab } from "@/routes/releases/edit"
 import { ReleaseCreditsForm } from "@/routes/releases/forms/credits"
@@ -162,9 +164,13 @@ const ReleaseSuggestionQuery = graphql(`
       others
       artists {
         name
+        matches
+        creditedAs
+        otherNames
         artist {
           id
           name
+          nameLanguage
         }
       }
       sameTitle {
@@ -200,6 +206,7 @@ export function ImportNewRelease() {
     fetchPolicy: "network-only",
   })
   const suggestion = data?.releaseSuggestion
+  const unpickedArtists = unpicked(suggestion?.artists ?? [])
   const plural = (n: number, noun: string) =>
     `${n} ${noun}${n === 1 ? "" : "s"}`
 
@@ -236,25 +243,30 @@ export function ImportNewRelease() {
               </AlertDescription>
             </Alert>
           )}
-          {suggestion.artists.some((a) => !a.artist) && (
-            <p className="text-xs text-muted-foreground">
+          {unpickedArtists.length > 0 && (
+            <p className="max-w-2xl text-xs text-muted-foreground">
               The tags name{" "}
-              {suggestion.artists
-                .filter((a) => !a.artist)
-                .map((a) => `"${a.name}"`)
-                .join(", ")}
-              , who isn't an artist yet. Type the name in Artists to create it.
+              {unpickedArtists.map((a, index) => (
+                <span key={a.name}>
+                  {index > 0 && ", "}"<span dir="auto">{a.name}</span>"
+                  {a.matches > 1
+                    ? `, which ${a.matches} artists match`
+                    : ", which isn't an artist yet"}
+                </span>
+              ))}
+              . Artists has each one typed in, in turn, to pick or create.
             </p>
           )}
+          <OtherNamesOffer offers={offeredNames(suggestion.artists)} />
           <ReleaseDetailsForm
             submitLabel="Create and continue"
+            offerSplit
+            typedArtists={unpickedArtists.map((a) => a.name)}
             initial={{
               ...EMPTY_DETAILS,
               title: suggestion.title,
               released: suggestion.released ?? "",
-              artists: suggestion.artists.flatMap((a) =>
-                a.artist ? [a.artist] : []
-              ),
+              artists: pickedArtists(suggestion.artists),
             }}
             onSaved={(id) => {
               navigate(stepUrl("Release", id, folder), { replace: true })
@@ -278,6 +290,7 @@ export function ImportRelease() {
       <DetailsTab
         id={id}
         submitLabel="Save and continue"
+        offerSplit
         onSaved={() => navigate(stepUrl("Tracks", id, folder))}
       />
     </ImportFrame>

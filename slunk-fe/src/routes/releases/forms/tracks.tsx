@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from "@apollo/client/react"
-import { XIcon } from "lucide-react"
+import { ArrowLeftRightIcon, SplitIcon, XIcon } from "lucide-react"
 import { Fragment, useState } from "react"
 
 import {
@@ -10,9 +10,16 @@ import {
   TitlesPopover,
 } from "@/components/alternate-titles-editor"
 import { ChipList } from "@/components/chip-list"
+import { OtherNamesOffer } from "@/components/other-names-offer"
 import type { Option } from "@/components/picker"
 import { ArtistPicker, FilePicker } from "@/components/pickers"
 import { QueryError } from "@/components/query-error"
+import {
+  SplitTitleButton,
+  splitTitle,
+  swapTitle,
+  type TitleValues,
+} from "@/components/title-split"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
@@ -30,6 +37,13 @@ import { graphql } from "@/gql"
 import type { ReleaseTracksFormQuery } from "@/gql/graphql"
 import { creditedInput, creditedOption } from "@/lib/credited"
 import { formatDuration } from "@/lib/format"
+import {
+  type OfferedName,
+  offeredNames,
+  pickedArtists,
+  unpicked,
+  unpickedLabel,
+} from "@/lib/import"
 import { textProps } from "@/lib/languages"
 
 const ReleaseTracksFormQueryDocument = graphql(`
@@ -116,9 +130,13 @@ const ReleaseTracksFormQueryDocument = graphql(`
       }
       artists {
         name
+        matches
+        creditedAs
+        otherNames
         artist {
           id
           name
+          nameLanguage
         }
       }
     }
@@ -169,8 +187,12 @@ type TrackRow = {
   fromFolder: boolean
   /** Why it can't be checked: it's another release's track */
   locked?: string
-  /** Tag artist names with no matching artist yet */
+  /** Tag artist names that picked no artist */
   hint?: string
+  /** Those names, typed into the artists picker in turn */
+  typed?: string[]
+  /** Its title was split at " = ", so it can be swapped */
+  split?: boolean
 }
 
 function initialRows(
@@ -203,9 +225,7 @@ function initialRows(
   for (const suggestion of data.trackSuggestions ?? []) {
     // Already one of this release's tracks: it has its row
     if (suggestion.track?.release.id === releaseId) continue
-    const unmatched = suggestion.artists
-      .filter((a) => !a.artist)
-      .map((a) => a.name)
+    const unmatched = unpicked(suggestion.artists)
     rows.push({
       key: `path-${suggestion.path}`,
       fileId: suggestion.file?.id,
@@ -215,9 +235,7 @@ function initialRows(
       title: suggestion.title,
       titleLanguage: null,
       alternateTitles: [],
-      artists: suggestion.artists.flatMap((a) =>
-        a.artist && !releaseArtists.has(a.artist.id) ? [a.artist] : []
-      ),
+      artists: pickedArtists(suggestion.artists, releaseArtists),
       features: [],
       durationMs: suggestion.durationMs ?? null,
       include: !suggestion.track,
@@ -225,7 +243,10 @@ function initialRows(
       locked: suggestion.track
         ? `Already a track on ${suggestion.track.release.title}`
         : undefined,
-      hint: unmatched.length ? `Tags: ${unmatched.join(", ")}` : undefined,
+      hint: unmatched.length
+        ? `Tags: ${unmatched.map(unpickedLabel).join(", ")}`
+        : undefined,
+      typed: unmatched.map((a) => a.name),
     })
   }
   // Sorted once: rows don't move while their numbers are being typed
@@ -302,6 +323,10 @@ export function ReleaseTracksForm({
     <Rows
       releaseId={releaseId}
       variousArtists={data.release?.variousArtists ?? false}
+      offerSplit={folder !== undefined}
+      offers={offeredNames(
+        (data.trackSuggestions ?? []).flatMap((row) => row.artists)
+      )}
       initial={initialRows(data, releaseId)}
       initialTitles={initialTitles(data)}
       submitLabel={submitLabel}
@@ -313,6 +338,8 @@ export function ReleaseTracksForm({
 function Rows({
   releaseId,
   variousArtists,
+  offerSplit,
+  offers,
   initial,
   initialTitles,
   submitLabel,
@@ -320,6 +347,9 @@ function Rows({
 }: {
   releaseId: string
   variousArtists: boolean
+  /** The import's split of titles with " = " (3_alternate_names.md §7.7) */
+  offerSplit: boolean
+  offers: OfferedName[]
   initial: TrackRow[]
   initialTitles: Record<number, DiscTitleValues>
   submitLabel: string
@@ -334,6 +364,37 @@ function Rows({
       current.map((row) => (row.key === key ? { ...row, ...changes } : row))
     )
   const included = rows.filter((row) => row.include)
+  const titlesOf = (row: TrackRow): TitleValues => ({
+    title: row.title,
+    language: row.titleLanguage,
+    alternateTitles: row.alternateTitles,
+  })
+  const withTitles = (row: TrackRow, values: TitleValues) => ({
+    ...row,
+    title: values.title,
+    titleLanguage: values.language,
+    alternateTitles: values.alternateTitles,
+    split: true,
+  })
+  const splittable = offerSplit
+    ? included.filter((row) => splitTitle(titlesOf(row)))
+    : []
+  const swappable = offerSplit
+    ? included.filter(
+        (row) =>
+          row.split &&
+          row.alternateTitles.length > 0 &&
+          !splitTitle(titlesOf(row))
+      )
+    : []
+  /** Splits or swaps the included rows that can be */
+  const changeAll = (change: (row: TrackRow) => TitleValues | null) =>
+    setRows((current) =>
+      current.map((row) => {
+        const values = row.include ? change(row) : null
+        return values ? withTitles(row, values) : row
+      })
+    )
   // A title field for each disc the saved tracks will be on
   const discs = [...new Set(included.map((row) => row.cdNumber))]
     .filter((disc) => Number.isInteger(disc) && disc > 0)
@@ -384,6 +445,44 @@ function Rows({
           : "On a regular release, leave artists empty and the release's artists perform the track."}
       </p>
       {error && <QueryError error={error} title="Can't save the tracks" />}
+      <OtherNamesOffer offers={offers} />
+      {(splittable.length > 0 || swappable.length > 0) && (
+        <div className="flex max-w-2xl items-center gap-3 border px-2 py-1.5 text-xs">
+          <span className="flex-1">
+            {splittable.length > 0
+              ? `${splittable.length} ${splittable.length === 1 ? "title has" : "titles have"} " = " in them, like a title printed in two languages. Splitting makes the first part the main title, and the others alternate titles.`
+              : "Swap makes the other part of each split title the main one."}
+          </span>
+          {splittable.length > 0 && (
+            <Button
+              type="button"
+              size="xs"
+              variant="outline"
+              onClick={() => changeAll((row) => splitTitle(titlesOf(row)))}
+            >
+              <SplitIcon />
+              Split all
+            </Button>
+          )}
+          {swappable.length > 0 && (
+            <Button
+              type="button"
+              size="xs"
+              variant="outline"
+              onClick={() =>
+                changeAll((row) =>
+                  swappable.some((r) => r.key === row.key)
+                    ? swapTitle(titlesOf(row))
+                    : null
+                )
+              }
+            >
+              <ArrowLeftRightIcon />
+              Swap all
+            </Button>
+          )}
+        </div>
+      )}
       {discs.length > 0 && (
         <fieldset className="flex max-w-2xl flex-col gap-2">
           <legend className="mb-2 font-medium">Disc titles</legend>
@@ -513,6 +612,20 @@ function Rows({
                       {...textProps(row.titleLanguage)}
                       onChange={(e) => edit(row.key, { title: e.target.value })}
                     />
+                    {offerSplit && (
+                      <SplitTitleButton
+                        values={titlesOf(row)}
+                        split={row.split ?? false}
+                        disabled={off}
+                        onChange={(values) =>
+                          setRows((current) =>
+                            current.map((r) =>
+                              r.key === row.key ? withTitles(r, values) : r
+                            )
+                          )
+                        }
+                      />
+                    )}
                     <TitlesPopover
                       main={row.title}
                       language={row.titleLanguage}
@@ -531,6 +644,7 @@ function Rows({
                     onChange={(artists) => edit(row.key, { artists })}
                     picker={(p) => <ArtistPicker {...p} />}
                     credited
+                    typed={row.typed}
                   />
                   {row.hint && (
                     <p className="mt-1 text-muted-foreground">{row.hint}</p>

@@ -129,6 +129,20 @@ export type ReleaseTrackInput = FileRef &
     features: CreditedArtistInput[]
   }
 
+/** The artist a tag suggests, for the import (3_alternate_names.md §7.7). */
+export type ArtistSuggestion = {
+  /** The name matched: the tag, or its first part when it has " = " */
+  name: string
+  /** The artist, when exactly one matches */
+  artist: Artist | null
+  /** The name to credit it with, when that isn't the main name */
+  creditedAs: string | null
+  /** How many artists matched equally well: more than one picks none */
+  matches: number
+  /** The tag's other parts that the artist doesn't have as names yet */
+  otherNames: string[]
+}
+
 export type TrackInput = TitlesInput & {
   releaseId: number
   fileId: number
@@ -282,6 +296,79 @@ export function createCatalog({
       }
       return resolved
     }
+  }
+
+  /**
+   * The artist each tag names (3_alternate_names.md §7.7), matching in turn:
+   * the main name exactly, an alternate name exactly, credited with it, or
+   * either one ignoring case, credited as tagged, so "ALIKA" is still
+   * printed. The first step that finds anyone decides, and finding more than
+   * one artist picks none. A tag with " = " is matched by its first part, and
+   * its other parts are offered as names of the artist it matched.
+   */
+  async function suggestArtists(tags: string[]): Promise<ArtistSuggestion[]> {
+    const parsed = tags.map((tag) => {
+      const [name, ...others] = equalsParts(cleanText(tag))
+      return { name: name ?? "", others }
+    })
+    const found = await store.artists.findByNames(
+      parsed.flatMap(({ name }) => (name ? [name] : []))
+    )
+    const names = await store.artists.alternateNamesOf([
+      ...new Set(found.map((match) => match.item.id)),
+    ])
+    return parsed.map(({ name, others }) => {
+      const matches = found.filter(
+        (match) =>
+          nocase(match.alternate?.name ?? match.item.name) === nocase(name)
+      )
+      const steps = [
+        matches.filter((m) => !m.alternate && m.item.name === name),
+        matches.filter((m) => m.alternate?.name === name),
+        matches,
+      ]
+      const step = steps.findIndex((step) => step.length > 0)
+      const artists = new Map(
+        (steps[step] ?? []).map((match) => [match.item.id, match.item])
+      )
+      if (artists.size !== 1) {
+        return {
+          name,
+          artist: null,
+          creditedAs: null,
+          matches: artists.size,
+          otherNames: [],
+        }
+      }
+      const [artist] = artists.values()
+      const known = new Set([
+        artist.name,
+        name,
+        ...(names.get(artist.id) ?? []).map((known) => known.name),
+      ])
+      return {
+        name,
+        artist,
+        // Only a step-1 match shows the main name
+        creditedAs: step === 0 ? null : name,
+        matches: 1,
+        otherNames: others.filter((other) => !known.has(other)),
+      }
+    })
+  }
+
+  /**
+   * Releases with any of these titles, main or alternate, ignoring case: a
+   * folder tagged "Scenery = シーナリィ" finds "Scenery".
+   */
+  async function releasesTitledAny(titles: string[]) {
+    const found = new Map<number, Release>()
+    for (const title of new Set(titles.filter(Boolean))) {
+      for (const release of await store.releases.findByTitle(title)) {
+        found.set(release.id, release)
+      }
+    }
+    return [...found.values()]
   }
 
   /** Credit lines with their artists' credited names resolved. */
@@ -508,7 +595,6 @@ export function createCatalog({
       }),
     getArtist: (id: number) => store.artists.get(id),
     artistsByIds: (ids: readonly number[]) => store.artists.getMany(ids),
-    findArtistsByNames: (names: string[]) => store.artists.findByNames(names),
 
     async createArtist(input: ArtistInput) {
       const values = namedValues(input)
@@ -538,6 +624,37 @@ export function createCatalog({
           input.keepOldName ?? false
         )
         await setFileLinks(tx, "artist", id, input.files, registered)
+        return artist
+      })
+    },
+
+    /**
+     * Adds an alternate name after the artist's others, like one the import
+     * offers (3_alternate_names.md §7.7). Refuses one the artist has already.
+     */
+    async addArtistName(
+      id: number,
+      input: { name: string; language?: string | null }
+    ) {
+      const name = cleanText(input.name)
+      if (!name) throw new Error("The name is blank")
+      const language = languageTag(input.language)
+      return store.transaction(async (tx) => {
+        const artist = await tx.artists.get(id)
+        if (!artist) throw notFound("artist", id)
+        if (name === artist.name) {
+          throw new Error(`"${name}" is already the artist's main name`)
+        }
+        const names = (await tx.artists.alternateNamesOf([id])).get(id) ?? []
+        if (names.some((known) => known.name === name)) {
+          throw new Error(`${artist.name} already has the name "${name}"`)
+        }
+        await tx.artists.addAlternateName(id, {
+          name,
+          language,
+          realName: false,
+          note: null,
+        })
         return artist
       })
     },
@@ -1041,8 +1158,8 @@ export function createCatalog({
       return {
         title,
         released: date && isValidDate(date) ? date : null,
-        artistNames: names ?? [],
-        sameTitle: title ? await store.releases.findByTitle(title) : [],
+        artists: await suggestArtists(names ?? []),
+        sameTitle: await releasesTitledAny([title, ...equalsParts(title)]),
         music: music.length,
         images: files.filter((file) => file.type === "image").length,
         others: files.filter((file) => file.type === "other").length,
@@ -1059,9 +1176,14 @@ export function createCatalog({
         files.flatMap((file) => (file.file ? [file.file.id] : []))
       )
       const numbers = new Map<number, number>()
-      const rows = []
+      const read = []
       for (const file of files) {
-        const { durationMs, tags } = await media.readAudioAt(file.path)
+        read.push({ file, ...(await media.readAudioAt(file.path)) })
+      }
+      // Every row's artist tags are matched at once
+      const artists = await suggestArtists(read.flatMap((r) => r.tags.artists))
+      const rows = []
+      for (const { file, durationMs, tags } of read) {
         const fromName = fromFileName(file.path, normalized)
         const cdNumber = tags.discNumber ?? fromName.cdNumber
         const position = (numbers.get(cdNumber) ?? 0) + 1
@@ -1074,7 +1196,7 @@ export function createCatalog({
           discTitle: tags.discTitle,
           trackNumber: tags.trackNumber ?? fromName.trackNumber ?? position,
           title: tags.title ?? fromName.title,
-          artistNames: tags.artists,
+          artists: artists.splice(0, tags.artists.length),
           durationMs,
         })
       }
@@ -1179,6 +1301,22 @@ function isValidDate(text: string) {
   } catch {
     return false
   }
+}
+
+/**
+ * A tag's parts around " = ", as Discogs joins a name or title in two
+ * languages: "Ryo Fukui = 福居良" (3_alternate_names.md §7.7). The "=" needs
+ * spaces on both sides, since it's part of titles like "E=MC²". Empty and
+ * repeated parts are left out.
+ */
+export function equalsParts(text: string): string[] {
+  const parts = text.split(/\s+=\s+/u).map((part) => part.trim())
+  return [...new Set(parts.filter(Boolean))]
+}
+
+/** Lowercase in ASCII only, as SQLite's NOCASE compares. */
+function nocase(text: string) {
+  return text.replace(/[A-Z]/g, (letter) => letter.toLowerCase())
 }
 
 function mostCommon(values: (string | null)[]): string | null {

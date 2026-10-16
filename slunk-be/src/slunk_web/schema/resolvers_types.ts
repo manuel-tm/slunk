@@ -133,11 +133,23 @@ export type ArtistPage = {
   total: Scalars['Int']['output'];
 };
 
-/** A name from the tags, and the artist with exactly that name, ignoring case, if there's one. */
+/**
+ * An artist tag, and the artist it names. It's matched in turn by main name, by
+ * alternate name, and by either one ignoring case. The first step that finds
+ * anyone decides, and finding more than one artist picks none.
+ */
 export type ArtistSuggestion = {
   __typename?: 'ArtistSuggestion';
+  /** The artist, when exactly one matches */
   artist?: Maybe<Artist>;
+  /** The name to credit the artist with, when it isn't the main name: the alternate name it matched, or the tag when only case differs */
+  creditedAs?: Maybe<Scalars['String']['output']>;
+  /** How many artists matched equally well. More than one means none is picked. */
+  matches: Scalars['Int']['output'];
+  /** The name matched: the tag, or its first part when it has " = " in it, like "Ryo Fukui = 福居良" */
   name: Scalars['String']['output'];
+  /** The tag's other parts, after " = ", that the artist doesn't have as names yet, to offer as its alternate names */
+  otherNames: Array<Scalars['String']['output']>;
 };
 
 export type CatalogTotals = {
@@ -450,6 +462,8 @@ export type MissingFile = {
 
 export type Mutation = {
   __typename?: 'Mutation';
+  /** Adds an alternate name after the others, like one the import offers. Fails if the artist has the name already. */
+  addArtistName: Artist;
   createArtist: Artist;
   createLabel: Label;
   createListItem: ListItem;
@@ -506,6 +520,13 @@ export type Mutation = {
   /** The type can't change. Switching to single-value fails while a release or track has several values. */
   updateTag: Tag;
   updateTrack: Track;
+};
+
+
+export type MutationAddArtistNameArgs = {
+  id: Scalars['ID']['input'];
+  language?: InputMaybe<Scalars['String']['input']>;
+  name: Scalars['String']['input'];
 };
 
 
@@ -1554,7 +1575,10 @@ export type ArtistPageResolvers<ContextType = Context, ParentType extends Resolv
 
 export type ArtistSuggestionResolvers<ContextType = Context, ParentType extends ResolversParentTypes['ArtistSuggestion'] = ResolversParentTypes['ArtistSuggestion']> = {
   artist?: Resolver<Maybe<ResolversTypes['Artist']>, ParentType, ContextType>;
+  creditedAs?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  matches?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
   name?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  otherNames?: Resolver<Array<ResolversTypes['String']>, ParentType, ContextType>;
 };
 
 export type CatalogTotalsResolvers<ContextType = Context, ParentType extends ResolversParentTypes['CatalogTotals'] = ResolversParentTypes['CatalogTotals']> = {
@@ -1712,6 +1736,7 @@ export type MissingFileResolvers<ContextType = Context, ParentType extends Resol
 };
 
 export type MutationResolvers<ContextType = Context, ParentType extends ResolversParentTypes['Mutation'] = ResolversParentTypes['Mutation']> = {
+  addArtistName?: Resolver<ResolversTypes['Artist'], ParentType, ContextType, RequireFields<MutationAddArtistNameArgs, 'id' | 'name'>>;
   createArtist?: Resolver<ResolversTypes['Artist'], ParentType, ContextType, RequireFields<MutationCreateArtistArgs, 'input'>>;
   createLabel?: Resolver<ResolversTypes['Label'], ParentType, ContextType, RequireFields<MutationCreateLabelArgs, 'input'>>;
   createListItem?: Resolver<ResolversTypes['ListItem'], ParentType, ContextType, RequireFields<MutationCreateListItemArgs, 'kind' | 'name'>>;

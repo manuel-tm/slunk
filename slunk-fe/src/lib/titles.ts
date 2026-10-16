@@ -28,6 +28,21 @@ export function listedTitle<T extends { title: string }>(
   return alternates[0] ?? null
 }
 
+/**
+ * A tag's parts around " = ", as Discogs joins a title in two languages:
+ * "Scenery = シーナリィ" (§7.7). The "=" needs spaces on both sides, so
+ * "E=MC²" isn't split. Empty and repeated parts are left out. Null when
+ * there's only one part.
+ */
+export function titleParts(text: string): string[] | null {
+  const parts = text
+    .normalize("NFC")
+    .split(/\s+=\s+/u)
+    .map((part) => part.trim())
+  const unique = [...new Set(parts.filter(Boolean))]
+  return unique.length > 1 ? unique : null
+}
+
 /** A credited artist, with the artist's names in other languages. */
 export type NamedLink = CreditedLink & {
   artist: CreditedLink["artist"] & {

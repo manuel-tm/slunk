@@ -4,6 +4,7 @@ import type {
   Artist,
   NamedRepository,
   NamedValues,
+  NameMatch,
 } from "../slunk/catalog/repository.ts"
 import type { ArtistAlternateNames, Artists, DB } from "./db_types.ts"
 import { chunks, contains } from "./helpers.ts"
@@ -77,14 +78,47 @@ export function createNamedRepository(
       return found
     },
 
-    async findByNames(names) {
-      if (names.length === 0) return []
-      const rows = await db
-        .selectFrom(t)
-        .selectAll()
-        .where(sql`name collate nocase`, "in", names)
-        .execute()
-      return rows.map(toNamed)
+    // NOCASE, like the name indexes, so both queries use them
+    async findByNames(wanted) {
+      const matches: NameMatch<Artist>[] = []
+      for (const chunk of chunks([...new Set(wanted)])) {
+        const owners = await db
+          .selectFrom(t)
+          .selectAll()
+          .where(sql`name collate nocase`, "in", chunk)
+          .execute()
+        for (const row of owners) {
+          matches.push({ item: toNamed(row), alternate: null })
+        }
+        const alternates = await db
+          .selectFrom(names)
+          .innerJoin(t, `${t}.id`, `${names}.${owner}`)
+          .selectAll(t)
+          .select([
+            `${names}.id as alternate_id`,
+            `${names}.name as alternate_name`,
+            `${names}.language as alternate_language`,
+            `${names}.note as alternate_note`,
+            ...(hasRealNames
+              ? [`${names}.real_name as real_name` as const]
+              : []),
+          ])
+          .where(sql`${sql.ref(`${names}.name`)} collate nocase`, "in", chunk)
+          .execute()
+        for (const row of alternates) {
+          matches.push({
+            item: toNamed(row),
+            alternate: {
+              id: row.alternate_id,
+              name: row.alternate_name,
+              language: row.alternate_language,
+              realName: "real_name" in row && row.real_name === 1,
+              note: row.alternate_note,
+            },
+          })
+        }
+      }
+      return matches
     },
 
     async insert(values) {

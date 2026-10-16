@@ -90,7 +90,7 @@ const CreateArtistOption = graphql(`
 `)
 
 export function ArtistPicker(props: PickerProps) {
-  const [query, setQuery] = useState("")
+  const [query, setQuery] = useState(props.defaultQuery ?? "")
   const q = useDebounced(query)
   const { data } = useQuery(ArtistOptions, { variables: { q, perPage: LIMIT } })
   const [create] = useMutation(CreateArtistOption)

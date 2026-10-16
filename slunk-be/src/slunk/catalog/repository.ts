@@ -127,14 +127,20 @@ export type NamedValues = {
   picture: number | null
 }
 
+/** An artist or label found by a name: an alternate name, or null for the main one. */
+export type NameMatch<T> = { item: T; alternate: AlternateName | null }
+
 /** Artists and labels: named entities with a picture, and alternate names. */
 export interface NamedRepository<T> {
   /** The search matches the main name or an alternate name */
   list(query: ListQuery<"name">): Promise<Page<T>>
   get(id: number): Promise<T | null>
   getMany(ids: readonly number[]): Promise<T[]>
-  /** Exact names, ignoring case */
-  findByNames(names: string[]): Promise<T[]>
+  /**
+   * Who has one of these names, as main or alternate name, ignoring ASCII
+   * case as SQLite's NOCASE does: a match for each such name
+   */
+  findByNames(names: string[]): Promise<NameMatch<T>[]>
   insert(values: NamedValues): Promise<T>
   update(id: number, values: Partial<NamedValues>): Promise<T | null>
   delete(id: number): Promise<void>

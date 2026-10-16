@@ -1,6 +1,6 @@
 # Alternate names and titles
 
-> **Status: being built.**
+> **Status: complete.** This design's four phases (§8, phases 0 to 3) were built by 2026-10-16. It's now an archive and isn't edited again. A later change to alternate names and titles goes in the code and the rest of `docs/`.
 
 This document gives artists and labels alternate names, and releases, discs and tracks alternate titles, each with its language. It also lets every place an artist is named on a release or track say which name was printed there. It builds on the base design ([1_introduction.md](1_introduction.md)) and on credit lines ([2_credits.md](2_credits.md)), and adds two things they left out: real names (design §7.7, "Not shown") and names as credited (2_credits.md §3).
 
@@ -493,6 +493,8 @@ extend type Query {
 
 > Changed during implementation, see [Appendix B](#appendix-b-artists-count-the-links-that-show-the-main-name).
 
+> Changed during implementation, see [Appendix C](#appendix-c-the-import-adds-other-names-and-swaps-tracks).
+
 Changed types:
 - `Artist`: `nameLanguage`, `alternateNames: [ArtistName!]!`.
 - `Label`: `nameLanguage`, `alternateNames: [LabelName!]!`.
@@ -678,6 +680,8 @@ Each tag is shown by its name ("Japanese (Latin)"), with the tag itself muted.
 
 ### 7.7 Import (phase 3)
 
+> Changed during implementation, see [Appendix C](#appendix-c-the-import-adds-other-names-and-swaps-tracks).
+
 **Titles.**
 - An album or title tag that contains " = ", with a space on each side, keeps the whole tag as the title. The form then offers to split it: "Scenery" as the main title, and "シーナリィ" as a printed alternate title.
 - The split guesses the alternate title's language from its script, as credited names do (§6).
@@ -826,3 +830,21 @@ These were open while the design was written. They were settled as proposed when
 - **Was:** the artist form asks whether to keep the old name on a rename "when the artist has such links", and nothing in the API said how many there are.
 - **Now:** `Artist.mainNameUses: Int!` counts the artist links with no credited name. The form shows it under the name, asks only when it's more than 0, and the backend only adds the old name when there are links to keep it on.
 - **Why:** without the count, the form would ask on every rename, typo fixes included, and a rename with nothing to keep would leave an unused alternate name behind.
+
+## Appendix C: The import adds other names, and swaps tracks
+
+- **Date:** 2026-10-16
+- **Affects:** §6 GraphQL; §7.7 Import
+- **Was:**
+  - §7.7 offers a tag's other parts "as alternate names of the artist it matched", and §6 has no way to add one name. `updateArtist` replaces every field, and its file links too.
+  - §6 doesn't change `ArtistSuggestion`, which only has the tag and an artist.
+  - When a step finds more than one artist, "the picker opens with the name typed in", and §7.7 says that already happens with two artists of the same name.
+  - "Swap" is only described for the release's title.
+- **Now:**
+  - `addArtistName(id, name, language): Artist!` adds one alternate name after the others, and is refused when the artist has it already. The import offers each other name with an "Add" button, in the language its script gives away.
+  - `ArtistSuggestion` has `name` (the tag, or its first part), `artist`, `creditedAs`, `matches` (how many artists matched equally well) and `otherNames` (the other parts the artist doesn't have yet).
+  - The names that picked no artist are typed into the artists picker in turn, a new one after each pick, and the picker opens when it's clicked. Several names can be waiting, on the release and on each track row, and only one popup can be open. It didn't already happen: the old code picked one of two artists with the same name.
+  - In the tracks step, a split row's button then swaps it, and "Swap all" swaps every split row, like the release's Swap.
+  - The check for releases with the same title also tries each part of a title with " = ", so a folder tagged "Scenery = シーナリィ" finds "Scenery".
+- **Why:** offering a name needs a way to save just that name. Without Swap on the tracks, a user who swapped the release's title would have to retype every track's.
+

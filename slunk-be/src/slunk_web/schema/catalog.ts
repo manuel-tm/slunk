@@ -43,18 +43,6 @@ const credits = (
   }[]
 ) => list.map((c) => ({ role: c.role, artists: credited(c.artists) }))
 
-/** Pairs tag names with the artists that have exactly those names. */
-async function suggestArtists(catalog: Catalog, names: string[]) {
-  const found = await catalog.findArtistsByNames(names)
-  const byName = new Map(
-    found.map((artist) => [artist.name.toLowerCase(), artist])
-  )
-  return names.map((name) => ({
-    name,
-    artist: byName.get(name.toLowerCase()) ?? null,
-  }))
-}
-
 /** `uses` and `blockers` for either list type. */
 const listItemFields = {
   uses: (
@@ -110,23 +98,10 @@ export const catalogResolvers: Resolvers = {
     creditRoles: (_parent, { q }, { catalog }) => catalog.creditRoles(q),
     catalogTotals: (_parent, _args, { catalog }) => catalog.totals(),
     languages: (_parent, _args, { catalog }) => catalog.languages(),
-    releaseSuggestion: async (_parent, { folder }, { catalog }) => {
-      const { artistNames, ...suggestion } =
-        await catalog.suggestRelease(folder)
-      return {
-        ...suggestion,
-        artists: await suggestArtists(catalog, artistNames),
-      }
-    },
-    trackSuggestions: async (_parent, { folder }, { catalog }) => {
-      const rows = await catalog.suggestTracks(folder)
-      return Promise.all(
-        rows.map(async ({ artistNames, ...row }) => ({
-          ...row,
-          artists: await suggestArtists(catalog, artistNames),
-        }))
-      )
-    },
+    releaseSuggestion: (_parent, { folder }, { catalog }) =>
+      catalog.suggestRelease(folder),
+    trackSuggestions: (_parent, { folder }, { catalog }) =>
+      catalog.suggestTracks(folder),
   },
 
   Mutation: {
@@ -136,6 +111,8 @@ export const catalogResolvers: Resolvers = {
       catalog.updateArtist(n(id), artistInput(input)),
     setArtistPicture: (_parent, { id, picture }, { catalog }) =>
       catalog.setArtistPicture(n(id), fileRef(picture)),
+    addArtistName: (_parent, { id, ...name }, { catalog }) =>
+      catalog.addArtistName(n(id), name),
     deleteArtist: async (_parent, { id }, { catalog }) => {
       await catalog.deleteArtist(n(id))
       return id

@@ -12,6 +12,7 @@ import { OrderedList } from "@/components/ordered-list"
 import type { Option } from "@/components/picker"
 import { ArtistPicker, LabelPicker, ListItemPicker } from "@/components/pickers"
 import { QueryError } from "@/components/query-error"
+import { SplitTitleOffer } from "@/components/title-split"
 import { Button } from "@/components/ui/button"
 import {
   Field,
@@ -75,17 +76,23 @@ const UpdateRelease = graphql(`
 /**
  * A release's details (design §7.6): title, artists, various artists,
  * date, formats, media, labels and catalog number. Without `releaseId`, it
- * creates the release.
+ * creates the release. The import also offers to split a title with " = ",
+ * and types the tag names that picked no artist into Artists, in turn
+ * (3_alternate_names.md §7.7).
  */
 export function ReleaseDetailsForm({
   releaseId,
   initial,
   submitLabel = "Save",
+  offerSplit = false,
+  typedArtists,
   onSaved,
 }: {
   releaseId?: string
   initial: DetailsValues
   submitLabel?: string
+  offerSplit?: boolean
+  typedArtists?: string[]
   onSaved: (id: string) => void
 }) {
   const [values, setValues] = useState(initial)
@@ -140,6 +147,18 @@ export function ReleaseDetailsForm({
               onChange={(titleLanguage) => set({ titleLanguage })}
             />
           </div>
+          {offerSplit && (
+            <SplitTitleOffer
+              values={{
+                title: values.title,
+                language: values.titleLanguage,
+                alternateTitles: values.alternateTitles,
+              }}
+              onChange={({ title, language, alternateTitles }) =>
+                set({ title, titleLanguage: language, alternateTitles })
+              }
+            />
+          )}
           <FieldDescription>
             The language is also the tracks' and discs', unless they have their
             own.
@@ -165,6 +184,7 @@ export function ReleaseDetailsForm({
             onChange={(artists) => set({ artists })}
             picker={(p) => <ArtistPicker {...p} />}
             credited
+            typed={typedArtists}
           />
           <FieldDescription>
             Who the release is by, each as printed: blank for the main name. A

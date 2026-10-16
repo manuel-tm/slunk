@@ -45,6 +45,8 @@ export type PickerProps<T extends Option = Option> = {
   /** For a picker without a visible label, like one in a table row */
   "aria-label"?: string
   disabled?: boolean
+  /** Typed in to start with, like a tag name the import couldn't pick */
+  defaultQuery?: string
 }
 
 /**
@@ -59,6 +61,7 @@ export function Picker<T extends Option>({
   id,
   "aria-label": ariaLabel,
   disabled,
+  defaultQuery,
   options,
   onQuery,
   query,
@@ -94,6 +97,7 @@ export function Picker<T extends Option>({
       filter={null}
       value={value}
       disabled={disabled || creating}
+      defaultInputValue={defaultQuery}
       itemToStringLabel={(option) => option.name}
       isItemEqualToValue={(a, b) => keyOf(a) === keyOf(b)}
       onInputValueChange={onQuery}

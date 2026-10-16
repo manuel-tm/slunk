@@ -2,11 +2,11 @@
 
 > Keep this page up to date: any change to the backend's stack, structure, scripts or conventions updates it in the same change.
 
-The backend implements the whole base design ([1_introduction.md](../design/1_introduction.md), phases 0 to 4), with credits as lines from phase 0 of [2_credits.md](../design/2_credits.md), and alternate names, credited names and alternate titles from phases 0 to 2 of [3_alternate_names.md](../design/3_alternate_names.md):
+The backend implements the whole base design ([1_introduction.md](../design/1_introduction.md), phases 0 to 4), with credits as lines from phase 0 of [2_credits.md](../design/2_credits.md), and alternate names, credited names, alternate titles and the import's use of them from [3_alternate_names.md](../design/3_alternate_names.md), phases 0 to 3:
 - the database connection, the migration runner with backup retention, and the migrations;
 - a GraphQL server with a `health` query;
 - the media context: registering files, browsing the library on disk, serving the files' bytes, and file links;
-- the catalog context: artists and labels with their alternate names, releases with their formats, media and labels, tracks, disc titles, alternate titles, credits, and suggestions for importing a folder;
+- the catalog context: artists and labels with their alternate names, releases with their formats, media and labels, tracks, disc titles, alternate titles, credits, and suggestions for importing a folder, matching artists by any of their names;
 - the tagging context: tag definitions, their values on releases and tracks, the lists' tag filters, and bulk edits;
 - the library check: what changed on disk since files were registered, and gaps in the catalog.
 
@@ -215,10 +215,10 @@ The path is under `/raw` so it can't collide with the frontend's `/files` pages 
   - An artist's credits are a row per line the artist is on, with the name it's credited with there, and `counts.credits` counts those lines.
 - **Deletes** check what blocks them first, and the error says what does: "The artist is still used: release artist on 1 release, credited 2 times". Each entity's `blockers` field gives the same reasons ahead of time, for the delete dialog.
 - **Import suggestions** (design §7.9) only read the folder:
-  - `suggestRelease(folder)`: the most common album, date and album artist tags, or else the folder's name. Also the releases with that title already, and how many audio files, images and other files the folder holds.
+  - `suggestRelease(folder)`: the most common album, date and album artist tags, or else the folder's name. Also the releases with that title already, and how many audio files, images and other files the folder holds. The title is kept whole, even with " = " in it: the frontend offers to split it. The check for releases with that title also tries each part, so "Scenery = シーナリィ" finds "Scenery".
   - `suggestTracks(folder)`: a row for each audio file, with disc, number and title from its tags. Without tags, they come from the path: `CD2/03 Title.flac` is disc 2, track 3, "Title". Each row also has its disc's title tag (`DISCSUBTITLE`, or `TSST` in MP3s), if the file has one.
-
-  The resolvers pair tag names with the artists that have exactly that name, ignoring case.
+  - **Artist tags** are matched by `suggestArtists()` ([3_alternate_names.md §7.7](../design/3_alternate_names.md#77-import-phase-3)), all of a folder's at once, in three steps: the main name exactly; then an alternate name exactly, credited with it; then either one ignoring ASCII case, credited as tagged, so "ALIKA", with only "Alika" known, is still printed as "ALIKA". The first step that finds anyone decides. Finding more than one artist picks none, and `matches` says how many there were.
+  - A tag with " = " in it ("Ryo Fukui = 福居良") is matched by its first part. Its other parts that the artist doesn't have yet are `otherNames`, for the import to offer as alternate names. `equalsParts()` splits only at an "=" with spaces around it, since "E=MC²" is a title.
 - **The release list** filters by format, medium, label, artist and tags, and they combine. Tag filters come from the tagging context, already checked. `releaseIds` returns every matching release's id, for selecting them all in a bulk edit.
 - **The track list** filters by release and by tags.
 - **A track's tags** are saved with the track, in the same transaction, when `createTrack` or `updateTrack` is given `tags`. Left out, they stay as they are.
@@ -389,8 +389,9 @@ Using it:
   - `createArtist`, `updateArtist`, `deleteArtist`, and the same for labels, releases, tracks and list items. `ArtistInput` and `LabelInput` take the name's language and the alternate names, and `ArtistInput` `keepOldName`. Release, track and credit inputs take artists as `CreditedArtistInput`s: an `artistId`, and `creditedAs`, the name as printed.
   - `setReleaseTracks`, `setReleaseFiles`, `setReleaseCredits`: a release's edit tabs. Files can be given by path, and they're registered first. `setReleaseTracks` also takes the disc titles, which `Release.discTitles` reads.
   - `setReleaseCover`, `setArtistPicture`, `setLabelPicture`: only the image, from a file id or a path to register first. The pages set an empty one with them.
+  - `addArtistName`: adds one alternate name after the others, as the import does with a tag's other names. It's refused when the artist has the name already.
   - `catalogTotals`: the dashboard's numbers.
-  - `releaseSuggestion`, `trackSuggestions`: the import's prefill.
+  - `releaseSuggestion`, `trackSuggestions`: the import's prefill. Their artists are `ArtistSuggestion`s: the name matched, the artist if exactly one matched, the name to credit it with, how many matched, and the other names to offer.
   - `tags`, `tag`: tag definitions, of one type or all three. A `TextTag` has its `values`, counted. `tagsByRef` gets tags by type and id, for naming a list's filters.
   - `createTag`, `updateTag`, `deleteTag`, and `setReleaseTags`, the release's Tags tab. `Release.tags` and `Track.tags` read them, and `TrackInput.tags` sets a track's.
   - `setTagOnReleases`, `removeTagFromReleases`: bulk edits.

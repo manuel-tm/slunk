@@ -2,7 +2,7 @@
 
 > Keep this page up to date: any change to the frontend's stack, structure or conventions updates it in the same change.
 
-The frontend implements the whole base design ([1_introduction.md](../design/1_introduction.md), phases 0 to 4), with credits as lines from phase 0 of [2_credits.md](../design/2_credits.md), and alternate names, credited names and alternate titles from phases 0 to 2 of [3_alternate_names.md](../design/3_alternate_names.md):
+The frontend implements the whole base design ([1_introduction.md](../design/1_introduction.md), phases 0 to 4), with credits as lines from phase 0 of [2_credits.md](../design/2_credits.md), and alternate names, credited names, alternate titles and the import's use of them from [3_alternate_names.md](../design/3_alternate_names.md), phases 0 to 3:
 - the app shell (sidebar with the Import button, page header) and a "not found" page;
 - the dashboard: the backend's status, the catalog's totals, and the newest releases;
 - the files pages: list, register, read and update;
@@ -12,7 +12,7 @@ The frontend implements the whole base design ([1_introduction.md](../design/1_i
 - alternate titles of releases, tracks and discs, under their main titles, and the language of each title;
 - tags: their definitions' pages, a release's Tags tab, its tags on the release page, a track's tags, and tag filters on the release and track lists;
 - bulk edits on the release list: setting or removing a tag on many releases;
-- the import: a release built from a folder, step by step;
+- the import: a release built from a folder, step by step, with titles split at " = " and artists matched by any of their names;
 - the library check: files missing, moved or changed on disk, unregistered files, and gaps in the catalog.
 
 ## Stack
@@ -90,6 +90,8 @@ slunk-fe/
                            titles under it, and a list row's one
       alternate-titles-editor.tsx  alternate titles, and a "Titles" popover
                            for a table row
+      title-split.tsx      the import's split of a title at " = ", and Swap
+      other-names-offer.tsx  the import's offer of names from artist tags
       credited-as.tsx      the name an artist is credited with: a field,
                            and a chip label with a popover
       file-uses.tsx        what uses a file, each linking to it
@@ -119,11 +121,15 @@ slunk-fe/
     lib/
       apollo.ts            the Apollo client, and its cache's type policies
       format.ts            sizes, durations, dates, release dates, roles
-      languages.ts         language names, tags, and lang/dir for names
+      languages.ts         language names, tags, lang/dir for names, and
+                           the language a script gives away
       names.ts             the alternate name a search matched
       credited.ts          artists as credited: as options, and as inputs
-      titles.ts            which alternate title a list row shows, and the
-                           artists' names in a title's language
+      titles.ts            which alternate title a list row shows, the
+                           artists' names in a title's language, and a
+                           title's parts around " = "
+      import.ts            the artists the import's tags pick, the tags left
+                           to pick, and the other names to offer
       tags.ts              tag types, values, and the list's tag filters
       utils.ts             cn() helper
 ```
@@ -232,13 +238,21 @@ Delete is a button on the read page that opens an `alert-dialog` (design §7.2).
 
 `routes/import/steps.tsx` is the import (design §7.9), a route per step, with a stepper at the top whose steps are links once the release exists:
 1. **Folder** (`/import?path=…`): the `FolderBrowser`.
-2. **Release** (`/import/release?folder=…`): the details form, prefilled from `releaseSuggestion`. Tag artist names that match an artist are picked already, and the others are named so they can be created. Saving replaces the history entry with `/import/:id/release?folder=…`, where going back edits the release.
+2. **Release** (`/import/release?folder=…`): the details form, prefilled from `releaseSuggestion`. Saving replaces the history entry with `/import/:id/release?folder=…`, where going back edits the release.
 3. **Tracks:** the tracks form with `folder`. There's a row for each audio file in the folder that isn't a track yet, prefilled from `trackSuggestions`. On a regular release, tag artists who are release artists aren't added to the tracks. A disc without a title yet gets its files' disc title tag.
 4. **Cover & files:** the folder's images and other files. The cover is chosen among the images, defaulting to one named cover, folder or front. Each other file gets a checkbox and a note. The cover isn't also a file link.
 5. **Credits:** the credits form.
 6. **Tags:** the tags form. Finish opens the release page.
 
 Files are registered only when a step saves them, together with what uses them.
+
+**Names and titles from the tags** ([3_alternate_names.md §7.7](../design/3_alternate_names.md#77-import-phase-3)):
+- **Artists** the backend matched are picked already, each credited as the backend says (`lib/import.ts`): ARTIST=ALIKA picks Alika, credited as "ALIKA". An artist tagged twice is picked once.
+- **Tags that picked no artist,** because none matched or several did, are named above the form, or under the row's artists ("Tags: J. Smith (2 artists)"). The artists picker has each one typed in, in turn: `OrderedList` and `ChipList` take them as `typed`, and pass the next one to the picker as `defaultQuery` after each pick. Clicking the picker lists the matches, or offers to create the artist.
+- **Other names** from tags like "Ryo Fukui = 福居良" are offered by `OtherNamesOffer`, above the form or the tracks: "Add to Ryo Fukui's names" adds one at once, with `addArtistName`, in the language its script gives away (`scriptLanguage()`: kana are `ja`, Hangul `ko`).
+- **Titles with " = "** ("Scenery = シーナリィ") are kept whole, and offered a split (`components/title-split.tsx`). Nothing is split unless the user says so, and an "=" without spaces around it ("E=MC²") isn't offered one.
+  - The release step offers it under the title (`offerSplit` on the details form, and on `DetailsTab` once the release exists). Split makes the first part the main title, and the others printed alternate titles, each in the language its script gives away. Then "Swap" trades the main title with the first alternate one, languages included, for a user who wants the original language first.
+  - The tracks step has a split button by each title that has one, and "Split all" above the table. A split row's button then swaps it, and "Swap all" swaps every split row.
 
 ### Disc titles
 

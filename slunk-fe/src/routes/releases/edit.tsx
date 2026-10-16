@@ -129,10 +129,13 @@ export function ReleaseEdit({ tab }: { tab: EditTab }) {
 export function DetailsTab({
   id,
   submitLabel,
+  offerSplit,
   onSaved,
 }: {
   id: string
   submitLabel?: string
+  /** The import's offer to split a title with " = " */
+  offerSplit?: boolean
   onSaved: () => void
 }) {
   const { data, error } = useQuery(ReleaseDetailsQuery, {
@@ -147,6 +150,7 @@ export function DetailsTab({
     <ReleaseDetailsForm
       releaseId={id}
       submitLabel={submitLabel}
+      offerSplit={offerSplit}
       initial={{
         title: release.title,
         titleLanguage: release.titleLanguage,
