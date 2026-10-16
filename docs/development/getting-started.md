@@ -54,6 +54,8 @@ npm install
 npm run dev
 ```
 
+`npm install` also downloads Playwright's headless Chromium (about 200 MB, once) into Playwright's cache, `~/Library/Caches/ms-playwright` on macOS. It's for taking screenshots of the app: see [frontend.md](frontend.md#screenshots).
+
 Vite prints the local URL when it starts. It proxies `/graphql` and `/raw` (the files' bytes) to the backend at `127.0.0.1:4000`, so start the backend first. The dashboard shows whether it can reach it.
 
 Scripts, run inside `slunk-fe/`:

@@ -27,6 +27,7 @@ The frontend implements the whole base design ([1_introduction.md](../design/1_i
 | Fonts | Nunito Sans (body) and Outfit (headings), self-hosted through Fontsource |
 | Toasts | sonner |
 | Dates | react-day-picker and date-fns, used by `calendar` |
+| Screenshots | Playwright, with headless Chromium (dev only) |
 
 ## Structure
 
@@ -302,3 +303,17 @@ Pressing `d` toggles between light and dark. It's ignored while typing in a fiel
 
 - **Prettier:** no semicolons, double quotes, 2-space indent, ES5 trailing commas, 80 columns. `prettier-plugin-tailwindcss` sorts classes, including inside `cn()` and `cva()`. Run `npm run format` instead of formatting by hand.
 - **ESLint:** the recommended JavaScript and typescript-eslint rules, plus react-hooks and react-refresh. Run `npm run lint`.
+
+### Screenshots
+
+Playwright is a dev dependency for looking at the app in a headless browser. There are no browser tests. The `postinstall` script runs `playwright install chromium --only-shell`, so `npm install` downloads the headless Chromium that matches the installed Playwright, and skips it when it's already there.
+
+With the dev server running (and the backend, for pages that show data), run inside `slunk-fe/`:
+
+```sh
+npx playwright screenshot --viewport-size=1280,800 --wait-for-timeout=1500 http://localhost:5173/releases releases.png
+```
+
+- `--color-scheme=dark` shows the dark theme, since the theme follows the system by default.
+- `--full-page` captures the whole scrollable page, and `--wait-for-selector <selector>` waits for something to render instead of a fixed time.
+- To click or type first, script it with the `playwright` library: `node --input-type=module -e "import { chromium } from 'playwright'; …"`, run inside `slunk-fe/` so the import resolves.

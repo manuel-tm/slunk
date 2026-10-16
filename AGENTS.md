@@ -67,7 +67,7 @@ Don't implement export or sync, and don't add tables for it. It needs its own de
 
 ## Before you finish
 
-- **Frontend:** in `slunk-fe/`, `npm run typecheck` and `npm run lint` pass, and `npm run format` has been run.
+- **Frontend:** in `slunk-fe/`, `npm run typecheck` and `npm run lint` pass, and `npm run format` has been run. A change that shows in the UI has been looked at in a screenshot: see [Screenshots](docs/development/frontend.md#screenshots).
 - **Backend:** in `slunk-be/`, the same checks, plus migrations apply and roll back cleanly on a fresh database.
 - **GraphQL:** after changing the schema or a query, `npm run codegen` has been run in both projects.
 - **Docs:** everything in `docs/` outside `docs/design/` matches the code after your change. A design change made while building that design's phases is recorded as an appendix, and no other design doc was touched.
